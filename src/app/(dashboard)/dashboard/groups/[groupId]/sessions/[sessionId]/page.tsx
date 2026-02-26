@@ -114,32 +114,103 @@ export default function SessionDetailPage() {
         fetchData();
     }, [fetchData]);
 
-    const handleDownloadCsv = () => {
+    const handleDownloadExcel = async () => {
         if (!allStudents.length) return;
+
+        // Dynamic import to avoid SSR issues
+        const ExcelJS = (await import("exceljs")).default;
+        const { saveAs } = (await import("file-saver")).default;
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Attendance");
+
+        // Define columns
+        worksheet.columns = [
+            { header: "Name", key: "name", width: 30 },
+            { header: "University ID", key: "id", width: 20 },
+            { header: "Attended", key: "attended", width: 15 },
+            { header: "Status / Violation", key: "status", width: 40 },
+        ];
+
+        // Style headers
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFE0E0E0" },
+        };
 
         const attendedIds = new Set(attendance.map((a) => a.university_id));
 
-        const csvRows = [
-            ["Name", "University ID", "Attended"],
-            ...allStudents.map((student) => [
-                `"${student.name}"`,
-                student.university_id,
-                attendedIds.has(student.university_id) ? "1" : "0",
-            ]),
-        ];
+        allStudents.forEach((student) => {
+            const hasAttended = attendedIds.has(student.university_id);
+            let statusText = hasAttended ? "Present" : "Absent";
+            let rowColor: string | null = null;
 
-        const csvContent = csvRows.map((row) => row.join(",")).join("\n");
-        // UTF-8 BOM for proper Arabic/Unicode rendering in Excel
-        const bom = "\uFEFF";
-        const blob = new Blob([bom + csvContent], {
-            type: "text/csv;charset=utf-8;",
+            // Check for violations matching this student
+            const studentViolations = violations.filter(
+                (v) =>
+                    v.university_id === student.university_id ||
+                    (v.type === "duplicate_device" &&
+                        v.details.original_student_id ===
+                            student.university_id),
+            );
+
+            if (studentViolations.length > 0) {
+                const outOfRange = studentViolations.find(
+                    (v) => v.type === "out_of_range",
+                );
+                const attemptedDuplicate = studentViolations.find(
+                    (v) =>
+                        v.type === "duplicate_device" &&
+                        v.university_id === student.university_id,
+                );
+                const originalDuplicate = studentViolations.find(
+                    (v) =>
+                        v.type === "duplicate_device" &&
+                        v.details.original_student_id === student.university_id,
+                );
+
+                if (attemptedDuplicate) {
+                    statusText = `Used device of: ${attemptedDuplicate.details.original_student_name} (${attemptedDuplicate.details.original_student_id})`;
+                    rowColor = "FFFFCCCC"; // Light Red
+                } else if (originalDuplicate) {
+                    statusText = `Device shared with: ${originalDuplicate.student_name} (${originalDuplicate.university_id})`;
+                    rowColor = "FFFFEDCC"; // Light Orange/Yellow
+                } else if (outOfRange) {
+                    statusText = `Out of range (${outOfRange.details.distance_meters}m)`;
+                    rowColor = "FFFFCCCC"; // Light Red
+                }
+            }
+
+            const row = worksheet.addRow({
+                name: student.name,
+                id: student.university_id,
+                attended: hasAttended ? "1" : "0",
+                status: statusText,
+            });
+
+            // Apply color if violation exists
+            if (rowColor) {
+                row.eachCell((cell) => {
+                    cell.fill = {
+                        type: "pattern",
+                        pattern: "solid",
+                        fgColor: { argb: rowColor as string },
+                    };
+                });
+            }
         });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `attendance_${session?.title || sessionId}_${new Date().toISOString().split("T")[0]}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+
+        // Generate and save file
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+        saveAs(
+            blob,
+            `attendance_${session?.title || sessionId}_${new Date().toISOString().split("T")[0]}.xlsx`,
+        );
     };
 
     if (loading) {
@@ -257,11 +328,11 @@ export default function SessionDetailPage() {
             {/* Download Button */}
             <div className="flex justify-end mb-4">
                 <Button
-                    onClick={handleDownloadCsv}
+                    onClick={handleDownloadExcel}
                     variant="outline"
                 >
                     <Download className="mr-2 h-4 w-4" />
-                    Download CSV
+                    Download Excel
                 </Button>
             </div>
 
