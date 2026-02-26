@@ -45,6 +45,7 @@ import {
     XCircle,
     Pencil,
     MapPin,
+    RefreshCw,
 } from "lucide-react";
 import Papa from "papaparse";
 
@@ -123,6 +124,8 @@ export default function GroupDetailPage() {
     const [sessionLng, setSessionLng] = useState<number | null>(null);
     const [sessionRadius, setSessionRadius] = useState("100");
     const [gettingLocation, setGettingLocation] = useState(false);
+    const [qrRotating, setQrRotating] = useState(true);
+    const [rotationInterval, setRotationInterval] = useState("15");
 
     const fetchGroup = useCallback(async () => {
         const { data } = await supabase
@@ -345,6 +348,9 @@ export default function GroupDetailPage() {
             sessionData.radius_meters = parseInt(sessionRadius);
         }
 
+        sessionData.qr_rotating = qrRotating;
+        sessionData.rotation_interval_seconds = parseInt(rotationInterval);
+
         const { data, error } = await supabase
             .from("sessions")
             .insert(sessionData)
@@ -543,6 +549,81 @@ export default function GroupDetailPage() {
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                        </div>
+
+                                        {/* QR Rotation Toggle */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="flex items-center gap-2">
+                                                    <RefreshCw className="h-4 w-4" />
+                                                    Rotating QR Code
+                                                </Label>
+                                                <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={
+                                                        qrRotating
+                                                            ? "true"
+                                                            : "false"
+                                                    }
+                                                    aria-label="Rotating QR Code"
+                                                    onClick={() =>
+                                                        setQrRotating(
+                                                            !qrRotating,
+                                                        )
+                                                    }
+                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                        qrRotating
+                                                            ? "bg-blue-600"
+                                                            : "bg-gray-200"
+                                                    }`}
+                                                >
+                                                    <span
+                                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                            qrRotating
+                                                                ? "translate-x-6"
+                                                                : "translate-x-1"
+                                                        }`}
+                                                    />
+                                                </button>
+                                            </div>
+                                            {qrRotating && (
+                                                <div className="p-3 bg-gray-50 rounded-lg">
+                                                    <Label className="text-xs">
+                                                        Rotation Interval
+                                                    </Label>
+                                                    <Select
+                                                        value={rotationInterval}
+                                                        onValueChange={
+                                                            setRotationInterval
+                                                        }
+                                                    >
+                                                        <SelectTrigger className="h-8 text-sm mt-1">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="5">
+                                                                5 seconds
+                                                            </SelectItem>
+                                                            <SelectItem value="10">
+                                                                10 seconds
+                                                            </SelectItem>
+                                                            <SelectItem value="15">
+                                                                15 seconds
+                                                            </SelectItem>
+                                                            <SelectItem value="20">
+                                                                20 seconds
+                                                            </SelectItem>
+                                                            <SelectItem value="30">
+                                                                30 seconds
+                                                            </SelectItem>
+                                                            <SelectItem value="60">
+                                                                60 seconds
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Location Toggle */}

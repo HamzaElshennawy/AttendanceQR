@@ -21,6 +21,8 @@ export default function LiveSessionPage() {
     const [sessionEnded, setSessionEnded] = useState(false);
     const [sessionTitle, setSessionTitle] = useState("");
     const [groupId, setGroupId] = useState("");
+    const [qrRotating, setQrRotating] = useState(true);
+    const [rotationInterval, setRotationInterval] = useState(15);
     const [rotationCountdown, setRotationCountdown] = useState(15);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -37,8 +39,13 @@ export default function LiveSessionPage() {
         if (data) {
             setSessionTitle(data.title || data.groups?.name || "Session");
             setGroupId(data.group_id);
+            setQrRotating(data.qr_rotating !== false);
+            const interval = data.rotation_interval_seconds || 15;
+            setRotationInterval(interval);
+            setRotationCountdown(interval);
         }
-    }, [supabase, sessionId]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId]);
 
     const rotateToken = useCallback(async () => {
         try {
@@ -65,24 +72,32 @@ export default function LiveSessionPage() {
     useEffect(() => {
         fetchSessionInfo();
         rotateToken();
+    }, [fetchSessionInfo, rotateToken]);
 
-        // Rotate token every 8 seconds
-        intervalRef.current = setInterval(() => {
-            rotateToken();
-            setRotationCountdown(15);
-        }, 15000);
+    // Set up rotation interval after session info is loaded
+    useEffect(() => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
 
-        // Countdown for rotation
-        rotationTimerRef.current = setInterval(() => {
-            setRotationCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-        }, 1000);
+        if (qrRotating) {
+            const intervalMs = rotationInterval * 1000;
+
+            intervalRef.current = setInterval(() => {
+                rotateToken();
+                setRotationCountdown(rotationInterval);
+            }, intervalMs);
+
+            rotationTimerRef.current = setInterval(() => {
+                setRotationCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+            }, 1000);
+        }
 
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
             if (rotationTimerRef.current)
                 clearInterval(rotationTimerRef.current);
         };
-    }, [fetchSessionInfo, rotateToken]);
+    }, [qrRotating, rotationInterval, rotateToken]);
 
     // Countdown timer
     useEffect(() => {
@@ -170,12 +185,19 @@ export default function LiveSessionPage() {
 
             {/* Rotation countdown + Session timer */}
             <div className="flex items-center gap-6 mb-8">
-                <div className="flex items-center gap-2 text-gray-400 text-sm">
-                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="font-mono text-lg font-bold text-white">
-                        {rotationCountdown}s
-                    </span>
-                </div>
+                {qrRotating ? (
+                    <div className="flex items-center gap-2 text-gray-400 text-sm">
+                        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="font-mono text-lg font-bold text-white">
+                            {rotationCountdown}s
+                        </span>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2 text-gray-400 text-sm">
+                        <div className="h-2 w-2 rounded-full bg-blue-500" />
+                        <span className="text-sm text-gray-400">Static QR</span>
+                    </div>
+                )}
                 <div className="w-px h-6 bg-gray-700" />
                 <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-amber-400" />
