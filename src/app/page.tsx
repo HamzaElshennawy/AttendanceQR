@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
-import { QrCode, Fingerprint, MapPin } from "lucide-react";
+import { Fingerprint, MapPin } from "lucide-react";
+import { QuorumIcon } from "@/components/QuorumLogo";
 
 export default async function LandingPage() {
     const supabase = await createClient();
@@ -21,10 +22,10 @@ export default async function LandingPage() {
                         className="flex items-center gap-2"
                     >
                         <div className="bg-zinc-900 p-1.5 rounded-md">
-                            <QrCode className="h-5 w-5 text-white" />
+                            <QuorumIcon className="h-5 w-5 text-white" />
                         </div>
                         <span className="text-lg font-semibold tracking-tight text-zinc-900">
-                            AttendanceQR
+                            Quorum
                         </span>
                     </Link>
                     <div className="flex items-center gap-4 text-sm font-medium">
@@ -122,9 +123,9 @@ export default async function LandingPage() {
                     <div className="grid md:grid-cols-3 gap-12">
                         {[
                             {
-                                icon: QrCode,
-                                title: "Dynamic Token Rotation",
-                                desc: "Check-in tokens refresh continuously. Capturing and sharing screenshots is rendered fundamentally useless.",
+                                icon: QuorumIcon,
+                                title: "Dynamic QR Code Rotation",
+                                desc: "Check-in QR Codes refresh continuously. Capturing and sharing screenshots is rendered fundamentally useless.",
                             },
                             {
                                 icon: MapPin,
@@ -163,7 +164,7 @@ export default async function LandingPage() {
                         <h2 className="text-3xl font-bold tracking-tight text-zinc-900">
                             Seamless infrastructure integration
                         </h2>
-                        <p className="text-zinc-600 text-lg leading-relaxed">
+                        <p className="text-zinc-600 text-md leading-relaxed">
                             Designed to adapt to your existing administrative
                             workflows. Import rosters directly from standardized
                             comma-separated files and export verified attendance
@@ -172,16 +173,16 @@ export default async function LandingPage() {
                         </p>
                         <ul className="space-y-4">
                             {[
-                                "Universal CSV parser for intelligent roster mapping",
+                                "Universal Spreadsheet parser for intelligent roster mapping",
                                 "Robust administrative dashboard and real-time session monitoring",
                                 "Advanced data highlighting for violation auditing",
                             ].map((item, i) => (
                                 <li
                                     key={i}
-                                    className="flex items-start gap-3"
+                                    className="flex items-center gap-3"
                                 >
                                     <div className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-zinc-900" />
-                                    <span className="text-zinc-700">
+                                    <span className="text-zinc-700 text-md">
                                         {item}
                                     </span>
                                 </li>
@@ -213,10 +214,10 @@ export default async function LandingPage() {
                 <div className="max-w-5xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
                         <div className="bg-zinc-900 p-1 rounded-sm">
-                            <QrCode className="h-4 w-4 text-white" />
+                            <QuorumIcon className="h-4 w-4 text-white" />
                         </div>
                         <span className="font-semibold text-zinc-900 tracking-tight">
-                            AttendanceQR
+                            Quorum
                         </span>
                     </div>
                     <p className="text-sm text-zinc-500">

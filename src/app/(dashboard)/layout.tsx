@@ -7,7 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { LayoutDashboard, LogOut, Menu, QrCode } from "lucide-react";
+import { LayoutDashboard, LogOut, Menu } from "lucide-react";
+import { QuorumIcon } from "@/components/QuorumLogo";
 
 export default function DashboardLayout({
     children,
@@ -58,7 +59,7 @@ export default function DashboardLayout({
                     className="flex items-center gap-2"
                 >
                     <div className="bg-zinc-900 p-1.5 rounded-md">
-                        <QrCode className="h-5 w-5 text-white" />
+                        <QuorumIcon className="h-5 w-5 text-white" />
                     </div>
                     <span className="text-xl font-bold text-zinc-900 tracking-tight">
                         Quorum
@@ -142,7 +143,7 @@ export default function DashboardLayout({
                     className="flex items-center gap-2"
                 >
                     <div className="bg-zinc-900 p-1 rounded-sm">
-                        <QrCode className="h-4 w-4 text-white" />
+                        <QuorumIcon className="h-4 w-4 text-white" />
                     </div>
                     <span className="text-lg font-bold text-zinc-900">
                         Quorum

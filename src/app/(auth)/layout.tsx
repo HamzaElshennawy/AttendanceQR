@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { QuorumIcon } from "@/components/QuorumLogo";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default function AuthLayout({
             <div className="w-full max-w-md">
                 <div className="text-center mb-8">
                     <div className="mx-auto w-12 h-12 bg-zinc-900 rounded-xl mb-4 flex items-center justify-center">
-                        <span className="text-white font-bold text-xl">Q</span>
+                        <QuorumIcon className="h-6 w-6 text-white" />
                     </div>
                     <h1 className="text-3xl font-bold text-zinc-900 tracking-tight">
                         Quorum
