@@ -25,36 +25,40 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
 
-    // Sign up with Supabase Auth
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (signUpError) {
-      setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (data.user) {
-      // Insert professor profile
-      const { error: profileError } = await supabase.from("professors").insert({
-        id: data.user.id,
-        name,
-        email,
-        university: university || null,
+    try {
+      // Create account via API route (bypasses RLS)
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, university }),
       });
 
-      if (profileError) {
-        setError(profileError.message);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error);
         setLoading(false);
         return;
       }
-    }
 
-    router.push("/dashboard");
-    router.refresh();
+      // Sign in after successful registration
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (

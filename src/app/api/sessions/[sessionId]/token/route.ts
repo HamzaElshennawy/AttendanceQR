@@ -1,16 +1,21 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+
+// Use service role for token rotation
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   const { sessionId } = await params;
-  const supabase = await createClient();
 
   // Fetch session
-  const { data: session, error: fetchError } = await supabase
+  const { data: session, error: fetchError } = await supabaseAdmin
     .from("sessions")
     .select("*")
     .eq("id", sessionId)
@@ -22,8 +27,7 @@ export async function POST(
 
   // Check if session has expired
   if (new Date(session.expires_at) < new Date()) {
-    // Auto-close expired session
-    await supabase
+    await supabaseAdmin
       .from("sessions")
       .update({ is_active: false })
       .eq("id", sessionId);
@@ -45,10 +49,10 @@ export async function POST(
 
   // Generate new token
   const newToken = crypto.randomBytes(16).toString("hex");
-  const tokenExpiresAt = new Date(Date.now() + 30 * 1000).toISOString(); // 30 second grace period
+  const tokenExpiresAt = new Date(Date.now() + 30 * 1000).toISOString();
 
   // Update session with new token
-  const { error: updateError } = await supabase
+  const { error: updateError } = await supabaseAdmin
     .from("sessions")
     .update({
       current_token: newToken,
@@ -61,13 +65,13 @@ export async function POST(
   }
 
   // Get attendance count
-  const { count } = await supabase
+  const { count } = await supabaseAdmin
     .from("attendance_records")
     .select("*", { count: "exact", head: true })
     .eq("session_id", sessionId);
 
   // Get total students in group
-  const { count: totalStudents } = await supabase
+  const { count: totalStudents } = await supabaseAdmin
     .from("students")
     .select("*", { count: "exact", head: true })
     .eq("group_id", session.group_id);

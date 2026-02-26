@@ -1,9 +1,13 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
-  const supabase = await createClient();
+// Use service role to bypass RLS for attendance operations
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
+export async function POST(request: Request) {
   const body = await request.json();
   const { session_id, university_id, token } = body;
 
@@ -15,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   // 1. Check session exists and is active
-  const { data: session, error: sessionError } = await supabase
+  const { data: session, error: sessionError } = await supabaseAdmin
     .from("sessions")
     .select("*")
     .eq("id", session_id)
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
 
   // Check if session expired
   if (new Date(session.expires_at) < new Date()) {
-    await supabase
+    await supabaseAdmin
       .from("sessions")
       .update({ is_active: false })
       .eq("id", session_id);
@@ -49,8 +53,6 @@ export async function POST(request: Request) {
 
   // 2. Validate token (check current token or allow within grace period)
   if (session.current_token !== token) {
-    // Check if token_expires_at hasn't passed (grace period for recently rotated tokens)
-    // We'll be lenient — if the token was valid within the last 30 seconds
     const tokenExpiry = new Date(session.token_expires_at);
     const now = new Date();
 
@@ -63,7 +65,7 @@ export async function POST(request: Request) {
   }
 
   // 3. Validate student exists in the group
-  const { data: student, error: studentError } = await supabase
+  const { data: student, error: studentError } = await supabaseAdmin
     .from("students")
     .select("*")
     .eq("group_id", session.group_id)
@@ -78,7 +80,7 @@ export async function POST(request: Request) {
   }
 
   // 4. Check for duplicate attendance
-  const { data: existing } = await supabase
+  const { data: existing } = await supabaseAdmin
     .from("attendance_records")
     .select("id")
     .eq("session_id", session_id)
@@ -93,7 +95,7 @@ export async function POST(request: Request) {
   }
 
   // 5. Record attendance
-  const { error: insertError } = await supabase
+  const { error: insertError } = await supabaseAdmin
     .from("attendance_records")
     .insert({
       session_id,

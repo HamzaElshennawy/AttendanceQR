@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { Users, Clock, XCircle, QrCode } from "lucide-react";
+import { Clock, XCircle, QrCode } from "lucide-react";
 
 export default function LiveSessionPage() {
   const params = useParams();
@@ -21,8 +21,10 @@ export default function LiveSessionPage() {
   const [sessionEnded, setSessionEnded] = useState(false);
   const [sessionTitle, setSessionTitle] = useState("");
   const [groupId, setGroupId] = useState("");
+  const [rotationCountdown, setRotationCountdown] = useState(15);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const rotationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const appUrl = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -65,10 +67,19 @@ export default function LiveSessionPage() {
     rotateToken();
 
     // Rotate token every 8 seconds
-    intervalRef.current = setInterval(rotateToken, 8000);
+    intervalRef.current = setInterval(() => {
+      rotateToken();
+      setRotationCountdown(15);
+    }, 15000);
+
+    // Countdown for rotation
+    rotationTimerRef.current = setInterval(() => {
+      setRotationCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
     };
   }, [fetchSessionInfo, rotateToken]);
 
@@ -137,7 +148,7 @@ export default function LiveSessionPage() {
       <p className="text-gray-400 text-lg mb-8">Scan the QR code to check in</p>
 
       {/* QR Code */}
-      <div className="bg-white p-6 md:p-8 rounded-2xl shadow-2xl mb-8">
+      <div className="bg-white p-6 md:p-8 rounded-2xl shadow-2xl mb-4">
         {token ? (
           <QRCodeSVG
             value={qrUrl}
@@ -152,32 +163,17 @@ export default function LiveSessionPage() {
         )}
       </div>
 
-      {/* Stats */}
-      <div className="flex items-center gap-8 mb-8">
-        <div className="flex items-center gap-3">
-          <Users className="h-6 w-6 text-blue-400" />
-          <div>
-            <p className="text-3xl font-bold">
-              {attendanceCount}
-              <span className="text-lg text-gray-400"> / {totalStudents}</span>
-            </p>
-            <p className="text-sm text-gray-500">checked in</p>
-          </div>
+      {/* Rotation countdown + Session timer */}
+      <div className="flex items-center gap-6 mb-8">
+        <div className="flex items-center gap-2 text-gray-400 text-sm">
+          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+          <span className="font-mono text-lg font-bold text-white">{rotationCountdown}s</span>
         </div>
-        <div className="w-px h-12 bg-gray-700" />
-        <div className="flex items-center gap-3">
-          <Clock className="h-6 w-6 text-amber-400" />
-          <div>
-            <p className="text-3xl font-bold font-mono">{timeLeft || "--:--"}</p>
-            <p className="text-sm text-gray-500">remaining</p>
-          </div>
+        <div className="w-px h-6 bg-gray-700" />
+        <div className="flex items-center gap-2">
+          <Clock className="h-4 w-4 text-amber-400" />
+          <span className="font-mono text-lg font-bold text-white">{timeLeft || "--:--"}</span>
         </div>
-      </div>
-
-      {/* Rotating indicator */}
-      <div className="flex items-center gap-2 text-gray-500 text-sm mb-8">
-        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-        QR code rotates every 8 seconds
       </div>
 
       {/* End Session */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { CheckCircle2, XCircle, QrCode, Loader2 } from "lucide-react";
 
 type Status = "idle" | "loading" | "success" | "error" | "already";
 
-export default function AttendPage() {
+function AttendForm() {
   const params = useParams();
   const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
@@ -34,7 +34,7 @@ export default function AttendPage() {
         body: JSON.stringify({
           session_id: sessionId,
           university_id: universityId.trim(),
-          token,
+          token: token,
         }),
       });
 
@@ -143,5 +143,19 @@ export default function AttendPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function AttendPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      }
+    >
+      <AttendForm />
+    </Suspense>
   );
 }
