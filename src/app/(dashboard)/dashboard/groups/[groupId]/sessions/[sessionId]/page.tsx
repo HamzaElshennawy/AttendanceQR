@@ -386,7 +386,7 @@ export default function SessionDetailPage() {
                                             <TableCell className="text-sm text-gray-500 max-w-[200px] truncate">
                                                 {v.type === "out_of_range"
                                                     ? `${v.details.distance_meters as number}m away (limit: ${v.details.radius_meters as number}m)`
-                                                    : `Same device as ${v.details.original_student_id as string}`}
+                                                    : `Device already used by ${(v.details.original_student_name as string) || "Unknown"} (${v.details.original_student_id as string})`}
                                             </TableCell>
                                             <TableCell className="text-gray-500 text-sm">
                                                 {new Date(

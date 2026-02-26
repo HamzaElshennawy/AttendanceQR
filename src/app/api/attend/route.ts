@@ -164,6 +164,14 @@ export async function POST(request: Request) {
             .single();
 
         if (existingDevice && existingDevice.university_id !== university_id) {
+            // Look up the original student's name
+            const { data: originalStudent } = await supabaseAdmin
+                .from("students")
+                .select("name")
+                .eq("group_id", session.group_id)
+                .eq("university_id", existingDevice.university_id)
+                .single();
+
             // Same device, different student — log violation
             await supabaseAdmin.from("violations").insert({
                 session_id,
@@ -173,7 +181,9 @@ export async function POST(request: Request) {
                 details: {
                     fingerprint,
                     original_student_id: existingDevice.university_id,
+                    original_student_name: originalStudent?.name || "Unknown",
                     attempted_student_id: university_id,
+                    attempted_student_name: student.name,
                 },
             });
 
