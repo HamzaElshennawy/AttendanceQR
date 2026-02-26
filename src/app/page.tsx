@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
-import { QrCode, Fingerprint, MapPin, Database } from "lucide-react";
+import { QrCode, Fingerprint, MapPin } from "lucide-react";
 
 export default async function LandingPage() {
     const supabase = await createClient();
@@ -180,7 +180,7 @@ export default async function LandingPage() {
                                     key={i}
                                     className="flex items-start gap-3"
                                 >
-                                    <div className="mt-1 flex-shrink-0 h-1.5 w-1.5 rounded-full bg-zinc-900" />
+                                    <div className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-zinc-900" />
                                     <span className="text-zinc-700">
                                         {item}
                                     </span>
