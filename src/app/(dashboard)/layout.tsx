@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { LayoutDashboard, LogOut, Menu } from "lucide-react";
+import { LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
 import { QuorumIcon } from "@/components/QuorumLogo";
 
 export default function DashboardLayout({
@@ -46,6 +46,7 @@ export default function DashboardLayout({
 
     const navItems = [
         { href: "/dashboard", label: "Groups", icon: LayoutDashboard },
+        { href: "/dashboard/settings", label: "Settings", icon: Settings },
     ];
 
     const isActive = (href: string) =>
