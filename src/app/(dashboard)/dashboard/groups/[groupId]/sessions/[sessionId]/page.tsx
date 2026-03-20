@@ -24,7 +24,11 @@ import {
     AlertTriangle,
     MapPin,
     Smartphone,
+    Pencil,
+    Check,
+    X,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 interface SessionDetail {
     id: string;
@@ -76,6 +80,36 @@ export default function SessionDetailPage() {
     const [allStudents, setAllStudents] = useState<Student[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
     const [loading, setLoading] = useState(true);
+
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editTitle, setEditTitle] = useState("");
+    const [isUpdatingTitle, setIsUpdatingTitle] = useState(false);
+
+    const handleUpdateTitle = async () => {
+        if (!editTitle.trim() || editTitle.trim() === session?.title) {
+            setIsEditingTitle(false);
+            return;
+        }
+
+        setIsUpdatingTitle(true);
+        try {
+            const { error } = await supabase
+                .from("sessions")
+                .update({ title: editTitle.trim() })
+                .eq("id", sessionId);
+
+            if (error) throw error;
+
+            setSession((prev) =>
+                prev ? { ...prev, title: editTitle.trim() } : prev,
+            );
+            setIsEditingTitle(false);
+        } catch (err) {
+            console.error("Failed to update title:", err);
+        } finally {
+            setIsUpdatingTitle(false);
+        }
+    };
 
     const fetchData = useCallback(async () => {
         const [sessionRes, attendanceRes, studentsRes, violationsRes] =
@@ -242,9 +276,60 @@ export default function SessionDetailPage() {
                 </Button>
                 <div className="flex-1">
                     <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-bold text-gray-900">
-                            {session.title || "Untitled Session"}
-                        </h1>
+                        {isEditingTitle ? (
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    className="h-8 text-lg font-bold w-[250px] bg-white text-gray-900 border-gray-300"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleUpdateTitle();
+                                        if (e.key === "Escape") setIsEditingTitle(false);
+                                    }}
+                                    disabled={isUpdatingTitle}
+                                />
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={handleUpdateTitle}
+                                    disabled={isUpdatingTitle}
+                                >
+                                    {isUpdatingTitle ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Check className="h-4 w-4" />
+                                    )}
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => setIsEditingTitle(false)}
+                                    disabled={isUpdatingTitle}
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        ) : (
+                            <>
+                                <h1 className="text-2xl font-bold text-gray-900">
+                                    {session.title || "Untitled Session"}
+                                </h1>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-gray-400 hover:text-gray-600 transition-colors"
+                                    onClick={() => {
+                                        setEditTitle(session.title || "");
+                                        setIsEditingTitle(true);
+                                    }}
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
+                            </>
+                        )}
                         {session.is_active ? (
                             <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                                 Live

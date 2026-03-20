@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2, XCircle, QrCode, Loader2, MapPin } from "lucide-react";
+import FingerprintJS from "@fingerprintjs/fingerprintjs";
 
 type Status =
     | "idle"
@@ -15,29 +16,6 @@ type Status =
     | "error"
     | "already"
     | "getting_location";
-
-// Simple browser fingerprint generator
-function generateFingerprint(): string {
-    const components = [
-        navigator.userAgent,
-        navigator.language,
-        screen.width + "x" + screen.height,
-        screen.colorDepth,
-        Intl.DateTimeFormat().resolvedOptions().timeZone,
-        navigator.hardwareConcurrency || "",
-        (navigator as unknown as { deviceMemory?: number }).deviceMemory || "",
-    ];
-
-    // Simple hash function
-    const str = components.join("|");
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = (hash << 5) - hash + char;
-        hash |= 0;
-    }
-    return Math.abs(hash).toString(36);
-}
 
 function AttendForm() {
     const params = useParams();
@@ -96,8 +74,30 @@ function AttendForm() {
 
         setStatus("loading");
 
-        // Generate fingerprint
-        const fingerprint = generateFingerprint();
+        // Generate fingerprint using FingerprintJS
+        let fingerprint = "";
+        try {
+            const fp = await FingerprintJS.load();
+            const result = await fp.get();
+            fingerprint = result.visitorId;
+        } catch {
+            // Fallback: simple hash from basic browser signals
+            const components = [
+                navigator.userAgent,
+                navigator.language,
+                screen.width + "x" + screen.height,
+                screen.colorDepth,
+                Intl.DateTimeFormat().resolvedOptions().timeZone,
+                navigator.hardwareConcurrency || "",
+                (navigator as unknown as { deviceMemory?: number }).deviceMemory || "",
+            ].join("|");
+            let hash = 0;
+            for (let i = 0; i < components.length; i++) {
+                hash = (hash << 5) - hash + components.charCodeAt(i);
+                hash |= 0;
+            }
+            fingerprint = "fallback_" + Math.abs(hash).toString(36);
+        }
 
         // Get location if session requires it
         let latitude: number | null = null;
