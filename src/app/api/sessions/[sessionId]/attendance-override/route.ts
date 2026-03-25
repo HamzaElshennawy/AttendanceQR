@@ -15,7 +15,11 @@ export async function POST(
 
     const { studentId, status, note } = await request.json();
 
-    if (!studentId || !status || !["present", "excused"].includes(status)) {
+    if (
+        !studentId ||
+        !status ||
+        !["present", "excused", "late"].includes(status)
+    ) {
         return NextResponse.json(
             { error: "Student and a valid status are required." },
             { status: 400 },

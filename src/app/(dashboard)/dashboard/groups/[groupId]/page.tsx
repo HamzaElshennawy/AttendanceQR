@@ -3,6 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+    defaultGradingSettings,
+    formatGrade,
+    getGradeValue,
+    normalizeGradingSettings,
+    type AttendanceStatus,
+    type GradingSettings,
+} from "@/lib/grading-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +80,7 @@ interface TeamMember {
 interface Session {
     id: string;
     title: string | null;
+    category: "lecture" | "tutorial";
     duration_minutes: number;
     is_active: boolean;
     started_at: string;
@@ -81,6 +90,17 @@ interface Session {
     longitude: number | null;
     radius_meters: number | null;
 }
+
+const sessionCategoryCopy = {
+    lecture: {
+        label: "Lecture",
+        badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
+    },
+    tutorial: {
+        label: "Tutorial",
+        badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+    },
+} as const;
 
 export default function GroupDetailPage() {
     const params = useParams();
@@ -94,6 +114,8 @@ export default function GroupDetailPage() {
     const [loading, setLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState("");
     const [team, setTeam] = useState<TeamMember[]>([]);
+    const [gradingSettings, setGradingSettings] =
+        useState<GradingSettings>(defaultGradingSettings);
 
     // Rename group
     const [renameOpen, setRenameOpen] = useState(false);
@@ -144,7 +166,6 @@ export default function GroupDetailPage() {
     const [qrRotating, setQrRotating] = useState(true);
     const [rotationInterval, setRotationInterval] = useState("15");
     const [exportOpen, setExportOpen] = useState(false);
-    const [excusedExportValue, setExcusedExportValue] = useState("0");
 
     const fetchGroup = useCallback(async () => {
         const { data } = await supabase
@@ -206,6 +227,19 @@ export default function GroupDetailPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupId]);
 
+    const fetchGradingSettings = useCallback(async () => {
+        const { data } = await supabase
+            .from("group_grading_settings")
+            .select(
+                "present_grade, late_grade, excused_grade, absent_grade, late_after_minutes",
+            )
+            .eq("group_id", groupId)
+            .maybeSingle();
+
+        setGradingSettings(normalizeGradingSettings(data));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [groupId]);
+
     const fetchTeam = useCallback(async () => {
         const res = await fetch(`/api/groups/${groupId}/members`);
         if (!res.ok) {
@@ -232,8 +266,16 @@ export default function GroupDetailPage() {
             fetchStudents(),
             fetchSessions(),
             fetchTeam(),
+            fetchGradingSettings(),
         ]).then(() => setLoading(false));
-    }, [fetchCurrentUser, fetchGroup, fetchStudents, fetchSessions, fetchTeam]);
+    }, [
+        fetchCurrentUser,
+        fetchGroup,
+        fetchStudents,
+        fetchSessions,
+        fetchTeam,
+        fetchGradingSettings,
+    ]);
 
     // Rename group
     const handleRenameGroup = async (e: React.FormEvent) => {
@@ -434,6 +476,7 @@ export default function GroupDetailPage() {
         const sessionData: Record<string, unknown> = {
             group_id: groupId,
             title: sessionTitle || null,
+            category: currentRole === "ta" ? "tutorial" : "lecture",
             duration_minutes: durationMinutes,
             is_active: true,
             expires_at: expiresAt,
@@ -460,7 +503,7 @@ export default function GroupDetailPage() {
         setStartingSession(false);
     };
 
-    const handleDownloadCumulativeExcel = async (excusedValue: "0" | "1") => {
+    const handleDownloadCumulativeExcel = async () => {
         if (!students.length || !sessions.length) return;
 
         const orderedSessions = [...sessions].sort(
@@ -485,7 +528,7 @@ export default function GroupDetailPage() {
         const attendanceByKey = new Map(
             (attendanceRows || []).map((row) => [
                 `${row.session_id}:${row.university_id}`,
-                row.status as "present" | "excused",
+                row.status as "present" | "excused" | "late",
             ]),
         );
 
@@ -494,7 +537,6 @@ export default function GroupDetailPage() {
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet("Cumulative Attendance");
-
         worksheet.columns = [
             { header: "Name", key: "name", width: 30 },
             { header: "University ID", key: "university_id", width: 18 },
@@ -504,13 +546,20 @@ export default function GroupDetailPage() {
                 ).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
-                })}`,
+                })}\n${sessionCategoryCopy[session.category].label}`,
                 key: session.id,
                 width: 16,
             })),
             { header: "Present Total", key: "present_total", width: 14 },
+            { header: "Late Total", key: "late_total", width: 12 },
             { header: "Excused Total", key: "excused_total", width: 14 },
-            { header: "Attendance %", key: "attendance_percent", width: 14 },
+            { header: "Lecture Grade", key: "lecture_grade_total", width: 16 },
+            {
+                header: "Tutorial Grade",
+                key: "tutorial_grade_total",
+                width: 16,
+            },
+            { header: "Grade Total", key: "grade_total", width: 14 },
         ];
 
         worksheet.getRow(1).font = { bold: true };
@@ -527,45 +576,51 @@ export default function GroupDetailPage() {
 
         for (const student of students) {
             let presentTotal = 0;
+            let lateTotal = 0;
             let excusedTotal = 0;
-            let earnedTotal = 0;
+            let gradeTotal = 0;
+            let lectureGradeTotal = 0;
+            let tutorialGradeTotal = 0;
 
             const sessionCells = orderedSessions.reduce<Record<string, string>>(
                 (acc, session) => {
                     const status = attendanceByKey.get(
                         `${session.id}:${student.university_id}`,
-                    );
+                    ) as AttendanceStatus | undefined;
+                    const gradeValue = getGradeValue(status, gradingSettings);
 
                     if (status === "present") {
                         presentTotal += 1;
-                        earnedTotal += 1;
-                        acc[session.id] = "1";
+                    } else if (status === "late") {
+                        lateTotal += 1;
                     } else if (status === "excused") {
                         excusedTotal += 1;
-                        if (excusedValue === "1") {
-                            earnedTotal += 1;
-                        }
-                        acc[session.id] = excusedValue;
-                    } else {
-                        acc[session.id] = "0";
                     }
+
+                    gradeTotal += gradeValue;
+                    if (session.category === "lecture") {
+                        lectureGradeTotal += gradeValue;
+                    } else {
+                        tutorialGradeTotal += gradeValue;
+                    }
+
+                    acc[session.id] = formatGrade(gradeValue);
 
                     return acc;
                 },
                 {},
             );
 
-            const attendancePercent = orderedSessions.length
-                ? Math.round((earnedTotal / orderedSessions.length) * 100)
-                : 0;
-
             const row = worksheet.addRow({
                 name: student.name,
                 university_id: student.university_id,
                 ...sessionCells,
                 present_total: presentTotal,
+                late_total: lateTotal,
                 excused_total: excusedTotal,
-                attendance_percent: `${attendancePercent}%`,
+                lecture_grade_total: formatGrade(lectureGradeTotal),
+                tutorial_grade_total: formatGrade(tutorialGradeTotal),
+                grade_total: formatGrade(gradeTotal),
             });
 
             row.getCell("present_total").fill = {
@@ -573,17 +628,37 @@ export default function GroupDetailPage() {
                 pattern: "solid",
                 fgColor: { argb: "FFDCFCE7" },
             };
+            row.getCell("late_total").fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFFEDD5" },
+            };
             row.getCell("excused_total").fill = {
                 type: "pattern",
                 pattern: "solid",
                 fgColor: { argb: "FFFEF3C7" },
+            };
+            row.getCell("lecture_grade_total").fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFE0F2FE" },
+            };
+            row.getCell("tutorial_grade_total").fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFEF3C7" },
+            };
+            row.getCell("grade_total").fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFE5E7EB" },
             };
 
             orderedSessions.forEach((session) => {
                 const sessionCell = row.getCell(session.id);
                 const status = attendanceByKey.get(
                     `${session.id}:${student.university_id}`,
-                );
+                ) as AttendanceStatus | undefined;
 
                 sessionCell.alignment = { horizontal: "center" };
 
@@ -596,11 +671,32 @@ export default function GroupDetailPage() {
                     return;
                 }
 
+                if (status === "late") {
+                    sessionCell.note = {
+                        texts: [
+                            {
+                                text: `Late attendance (${formatGrade(gradingSettings.late_grade)} grade)`,
+                                font: { bold: true },
+                            },
+                        ],
+                    };
+                    sessionCell.fill = {
+                        type: "pattern",
+                        pattern: "solid",
+                        fgColor: { argb: "FFFFEDD5" },
+                    };
+                    sessionCell.font = {
+                        bold: true,
+                        color: { argb: "FF9A3412" },
+                    };
+                    return;
+                }
+
                 if (status === "excused") {
                     sessionCell.note = {
                         texts: [
                             {
-                                text: "Excused session",
+                                text: `Excused session (${formatGrade(gradingSettings.excused_grade)} grade)`,
                                 font: { bold: true },
                             },
                         ],
@@ -624,6 +720,14 @@ export default function GroupDetailPage() {
                 };
                 sessionCell.font = {
                     color: { argb: "FF991B1B" },
+                };
+                sessionCell.note = {
+                    texts: [
+                        {
+                            text: `Absent (${formatGrade(gradingSettings.absent_grade)} grade)`,
+                            font: { bold: true },
+                        },
+                    ],
                 };
             });
         }
@@ -776,7 +880,9 @@ export default function GroupDetailPage() {
                             <DialogTrigger asChild>
                                 <Button
                                     variant="outline"
-                                    disabled={!students.length || !sessions.length}
+                                    disabled={
+                                        !students.length || !sessions.length
+                                    }
                                 >
                                     <Download className="mr-2 h-4 w-4" />
                                     Download Cumulative Attendance
@@ -789,32 +895,42 @@ export default function GroupDetailPage() {
                                     </DialogTitle>
                                 </DialogHeader>
                                 <div className="space-y-4 py-4">
-                                    <div className="space-y-2">
-                                        <Label>
-                                            How should excused sessions count?
-                                        </Label>
-                                        <Select
-                                            value={excusedExportValue}
-                                            onValueChange={setExcusedExportValue}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="0">
-                                                    Count excused as 0
-                                                </SelectItem>
-                                                <SelectItem value="1">
-                                                    Count excused as 1
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+                                        <p className="font-medium text-gray-900">
+                                            Current grading policy
+                                        </p>
+                                        <div className="mt-3 grid grid-cols-2 gap-3">
+                                            <div>
+                                                Present:{" "}
+                                                {formatGrade(
+                                                    gradingSettings.present_grade,
+                                                )}
+                                            </div>
+                                            <div>
+                                                Late:{" "}
+                                                {formatGrade(
+                                                    gradingSettings.late_grade,
+                                                )}
+                                            </div>
+                                            <div>
+                                                Excused:{" "}
+                                                {formatGrade(
+                                                    gradingSettings.excused_grade,
+                                                )}
+                                            </div>
+                                            <div>
+                                                Absent:{" "}
+                                                {formatGrade(
+                                                    gradingSettings.absent_grade,
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                     <p className="text-sm text-gray-500">
-                                        The Excel file will still visually mark
-                                        excused sessions, but this choice
-                                        controls the exported grade value and
-                                        attendance percentage.
+                                        The export uses the grading rules from
+                                        Settings for this group. Late and
+                                        excused sessions are still visually
+                                        marked in the sheet.
                                     </p>
                                 </div>
                                 <DialogFooter>
@@ -828,11 +944,7 @@ export default function GroupDetailPage() {
                                     <Button
                                         type="button"
                                         onClick={async () => {
-                                            await handleDownloadCumulativeExcel(
-                                                excusedExportValue as
-                                                    | "0"
-                                                    | "1",
-                                            );
+                                            await handleDownloadCumulativeExcel();
                                             setExportOpen(false);
                                         }}
                                     >
@@ -866,6 +978,19 @@ export default function GroupDetailPage() {
                                         </DialogTitle>
                                     </DialogHeader>
                                     <div className="space-y-4 py-4">
+                                        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                                            {/*This session will be created as a{" "}*/}
+                                            <span className="font-semibold">
+                                                {currentRole === "ta"
+                                                    ? "Tutorial"
+                                                    : "Lecture"}
+                                            </span>{" "}
+                                            {/*because you are signed in as{" "}*/}
+                                            {/*<span className="font-semibold">
+                                                {isOwner ? "the owner" : "a TA"}
+                                            </span>*/}
+                                            {/*.*/}
+                                        </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="sessionTitle">
                                                 Title (optional)
@@ -1189,6 +1314,20 @@ export default function GroupDetailPage() {
                                                         {session.title ||
                                                             "Untitled Session"}
                                                     </p>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            sessionCategoryCopy[
+                                                                session.category
+                                                            ].badgeClass
+                                                        }
+                                                    >
+                                                        {
+                                                            sessionCategoryCopy[
+                                                                session.category
+                                                            ].label
+                                                        }
+                                                    </Badge>
                                                     {session.latitude && (
                                                         <MapPin className="h-3.5 w-3.5 text-blue-500" />
                                                     )}

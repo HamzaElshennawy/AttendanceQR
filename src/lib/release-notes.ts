@@ -8,9 +8,37 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
     {
-        version: "v0.4.0",
+        version: "v0.6.0",
         date: "March 25, 2026",
         tag: "Latest",
+        title: "Editable Grading Policies",
+        notes: [
+            "Each group can now define its own grading values for present, late, excused, and absent attendance.",
+            "Professors and TAs can update those grading rules from the Settings page.",
+            "Late arrivals can now be assigned automatically after a configurable number of minutes from session start.",
+            "Attendance exports now use each group's saved grading policy instead of fixed values.",
+            "The grading rules UI is now shown as a vertical rule table for easier editing.",
+            "Password changes now open in a dialog instead of taking space on the main settings page.",
+        ],
+    },
+    {
+        version: "v0.5.0",
+        date: "March 25, 2026",
+        tag: "Attendance",
+        title: "Lecture And Tutorial Sessions",
+        notes: [
+            "Sessions are now automatically classified by who starts them.",
+            "When a professor or owner starts a session, it is saved as a lecture.",
+            "When a TA starts a session, it is saved as a tutorial.",
+            "Session lists, live session screens, student history, and exported cumulative attendance now show whether each session was a lecture or tutorial.",
+            "Attendance reporting now keeps lecture and tutorial performance separated, so professors can review each track independently.",
+            "Professors can now mark a student as late, and late attendance counts as 0.5 grade by default.",
+        ],
+    },
+    {
+        version: "v0.4.0",
+        date: "March 25, 2026",
+        tag: "Feedback",
         title: "Feedback, And Attendance Exporting",
         notes: [
             "Users can now submit structured feedback from inside the dashboard.",

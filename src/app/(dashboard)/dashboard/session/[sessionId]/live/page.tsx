@@ -21,6 +21,9 @@ export default function LiveSessionPage() {
     const [timeLeft, setTimeLeft] = useState("");
     const [sessionEnded, setSessionEnded] = useState(false);
     const [sessionTitle, setSessionTitle] = useState("");
+    const [sessionCategory, setSessionCategory] = useState<
+        "lecture" | "tutorial"
+    >("lecture");
     const [groupId, setGroupId] = useState("");
     const [qrRotating, setQrRotating] = useState(true);
     const [rotationInterval, setRotationInterval] = useState(15);
@@ -39,6 +42,7 @@ export default function LiveSessionPage() {
             .single();
         if (data) {
             setSessionTitle(data.title || data.groups?.name || "Session");
+            setSessionCategory(data.category === "tutorial" ? "tutorial" : "lecture");
             setGroupId(data.group_id);
             setQrRotating(data.qr_rotating !== false);
             const interval = data.rotation_interval_seconds || 15;
@@ -164,6 +168,15 @@ export default function LiveSessionPage() {
             <h1 className="text-2xl md:text-3xl font-bold mb-2">
                 {sessionTitle}
             </h1>
+            <div
+                className={`mb-3 rounded-full border px-3 py-1 text-sm font-medium ${
+                    sessionCategory === "tutorial"
+                        ? "border-amber-300 bg-amber-50 text-amber-800"
+                        : "border-sky-300 bg-sky-50 text-sky-800"
+                }`}
+            >
+                {sessionCategory === "tutorial" ? "Tutorial" : "Lecture"}
+            </div>
             <p className="text-gray-400 text-lg mb-8">
                 Scan the QR code to check in
             </p>

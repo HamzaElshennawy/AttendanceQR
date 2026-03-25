@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
     Card,
     CardContent,
@@ -13,25 +14,238 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Lock, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+    Loader2,
+    Lock,
+    CheckCircle2,
+    AlertCircle,
+    SlidersHorizontal,
+    Clock3,
+} from "lucide-react";
+import {
+    defaultGradingSettings,
+    formatGrade,
+    normalizeGradingSettings,
+} from "@/lib/grading-settings";
+
+interface Group {
+    id: string;
+    name: string;
+    professor_id: string;
+}
+
+interface Membership {
+    group_id: string;
+    role: "owner" | "ta";
+}
+
+interface GroupSettingsForm {
+    present_grade: string;
+    late_grade: string;
+    excused_grade: string;
+    absent_grade: string;
+    late_after_minutes: string;
+}
+
+const defaultFormValues: GroupSettingsForm = {
+    present_grade: String(defaultGradingSettings.present_grade),
+    late_grade: String(defaultGradingSettings.late_grade),
+    excused_grade: String(defaultGradingSettings.excused_grade),
+    absent_grade: String(defaultGradingSettings.absent_grade),
+    late_after_minutes: "",
+};
 
 export default function SettingsPage() {
+    const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const [groups, setGroups] = useState<Group[]>([]);
+    const [groupRoles, setGroupRoles] = useState<Record<string, "owner" | "ta">>(
+        {},
+    );
+    const [groupForms, setGroupForms] = useState<Record<string, GroupSettingsForm>>(
+        {},
+    );
+    const [groupSaveState, setGroupSaveState] = useState<
+        Record<string, { saving: boolean; message: string; error: string }>
+    >({});
+    const [loadingPolicies, setLoadingPolicies] = useState(true);
     const router = useRouter();
     const supabase = createClient();
+
+    const fetchSettingsData = useCallback(async () => {
+        setLoadingPolicies(true);
+
+        const [
+            {
+                data: { user },
+            },
+            { data: groupsData },
+            { data: membershipsData },
+            { data: settingsData },
+        ] = await Promise.all([
+            supabase.auth.getUser(),
+            supabase.from("groups").select("id, name, professor_id").order("name"),
+            supabase
+                .from("group_memberships")
+                .select("group_id, role")
+                .order("created_at"),
+            supabase
+                .from("group_grading_settings")
+                .select(
+                    "group_id, present_grade, late_grade, excused_grade, absent_grade, late_after_minutes",
+                ),
+        ]);
+
+        const roleMap = Object.fromEntries(
+            ((membershipsData || []) as Membership[]).map((membership) => [
+                membership.group_id,
+                membership.role,
+            ]),
+        );
+
+        const forms = Object.fromEntries(
+            (groupsData || []).map((group) => {
+                const saved = (settingsData || []).find(
+                    (entry) => entry.group_id === group.id,
+                );
+                const normalized = normalizeGradingSettings(saved);
+
+                return [
+                    group.id,
+                    {
+                        present_grade: String(normalized.present_grade),
+                        late_grade: String(normalized.late_grade),
+                        excused_grade: String(normalized.excused_grade),
+                        absent_grade: String(normalized.absent_grade),
+                        late_after_minutes:
+                            normalized.late_after_minutes == null
+                                ? ""
+                                : String(normalized.late_after_minutes),
+                    },
+                ];
+            }),
+        ) as Record<string, GroupSettingsForm>;
+
+        setGroups(groupsData || []);
+        setGroupRoles(
+            Object.fromEntries(
+                (groupsData || []).map((group) => [
+                    group.id,
+                    group.professor_id === user?.id
+                        ? "owner"
+                        : roleMap[group.id] || "ta",
+                ]),
+            ),
+        );
+        setGroupForms(forms);
+        setLoadingPolicies(false);
+    }, [supabase]);
+
+    useEffect(() => {
+        fetchSettingsData();
+    }, [fetchSettingsData]);
+
+    const handleGroupSettingChange = (
+        groupId: string,
+        field: keyof GroupSettingsForm,
+        value: string,
+    ) => {
+        setGroupForms((prev) => ({
+            ...prev,
+            [groupId]: {
+                ...(prev[groupId] || defaultFormValues),
+                [field]: value,
+            },
+        }));
+        setGroupSaveState((prev) => ({
+            ...prev,
+            [groupId]: { saving: false, message: "", error: "" },
+        }));
+    };
+
+    const handleSaveGroupSettings = async (groupId: string) => {
+        const form = groupForms[groupId];
+        if (!form) return;
+
+        const normalized = normalizeGradingSettings({
+            present_grade: form.present_grade,
+            late_grade: form.late_grade,
+            excused_grade: form.excused_grade,
+            absent_grade: form.absent_grade,
+            late_after_minutes: form.late_after_minutes,
+        });
+
+        setGroupSaveState((prev) => ({
+            ...prev,
+            [groupId]: { saving: true, message: "", error: "" },
+        }));
+
+        const { error: saveError } = await supabase
+            .from("group_grading_settings")
+            .upsert(
+                {
+                    group_id: groupId,
+                    ...normalized,
+                    updated_at: new Date().toISOString(),
+                },
+                { onConflict: "group_id" },
+            );
+
+        if (saveError) {
+            setGroupSaveState((prev) => ({
+                ...prev,
+                [groupId]: {
+                    saving: false,
+                    message: "",
+                    error: saveError.message,
+                },
+            }));
+            return;
+        }
+
+        setGroupForms((prev) => ({
+            ...prev,
+            [groupId]: {
+                present_grade: String(normalized.present_grade),
+                late_grade: String(normalized.late_grade),
+                excused_grade: String(normalized.excused_grade),
+                absent_grade: String(normalized.absent_grade),
+                late_after_minutes:
+                    normalized.late_after_minutes == null
+                        ? ""
+                        : String(normalized.late_after_minutes),
+            },
+        }));
+        setGroupSaveState((prev) => ({
+            ...prev,
+            [groupId]: {
+                saving: false,
+                message: "Grading settings saved.",
+                error: "",
+            },
+        }));
+    };
 
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
         setSuccess("");
 
-        // Client-side validation
         if (newPassword.length < 6) {
             setError("New password must be at least 6 characters long.");
             return;
@@ -50,7 +264,6 @@ export default function SettingsPage() {
         setLoading(true);
 
         try {
-            // Verify current password by re-authenticating
             const {
                 data: { user },
             } = await supabase.auth.getUser();
@@ -75,7 +288,6 @@ export default function SettingsPage() {
                 return;
             }
 
-            // Update the password
             const { error: updateError } = await supabase.auth.updateUser({
                 password: newPassword,
             });
@@ -90,6 +302,7 @@ export default function SettingsPage() {
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
+            setPasswordDialogOpen(false);
             router.push("/dashboard");
         } catch {
             setError("An unexpected error occurred. Please try again.");
@@ -99,34 +312,48 @@ export default function SettingsPage() {
     };
 
     return (
-        <div>
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-                <p className="text-gray-500 mt-1">
-                    Manage your account preferences
-                </p>
-            </div>
-
-            <div className="max-w-2xl">
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                                <Lock className="h-5 w-5 text-blue-600" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-lg">
-                                    Change Password
-                                </CardTitle>
-                                <CardDescription>
-                                    Update your password to keep your account
-                                    secure
-                                </CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <Separator />
-                    <CardContent className="pt-6">
+        <div className="space-y-8">
+            <div className="mb-2 flex items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">
+                        Settings
+                    </h1>
+                    <p className="mt-1 text-gray-500">
+                        Manage grading policies, late rules, and account
+                        security
+                    </p>
+                </div>
+                <Dialog
+                    open={passwordDialogOpen}
+                    onOpenChange={(open) => {
+                        setPasswordDialogOpen(open);
+                        if (!open) {
+                            setCurrentPassword("");
+                            setNewPassword("");
+                            setConfirmPassword("");
+                            setError("");
+                            setSuccess("");
+                        }
+                    }}
+                >
+                    <DialogTrigger asChild>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="shrink-0"
+                        >
+                            <Lock className="mr-2 h-4 w-4" />
+                            Change Password
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Change Password</DialogTitle>
+                            <DialogDescription>
+                                Update your password to keep your account
+                                secure.
+                            </DialogDescription>
+                        </DialogHeader>
                         <form
                             onSubmit={handleChangePassword}
                             className="space-y-4"
@@ -183,20 +410,27 @@ export default function SettingsPage() {
                             </div>
 
                             {error && (
-                                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2.5 rounded-lg">
+                                <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-600">
                                     <AlertCircle className="h-4 w-4 shrink-0" />
                                     {error}
                                 </div>
                             )}
 
                             {success && (
-                                <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-2.5 rounded-lg">
+                                <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2.5 text-sm text-green-600">
                                     <CheckCircle2 className="h-4 w-4 shrink-0" />
                                     {success}
                                 </div>
                             )}
 
-                            <div className="flex justify-end pt-2">
+                            <DialogFooter>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setPasswordDialogOpen(false)}
+                                >
+                                    Cancel
+                                </Button>
                                 <Button
                                     type="submit"
                                     disabled={loading}
@@ -206,10 +440,275 @@ export default function SettingsPage() {
                                     )}
                                     Update Password
                                 </Button>
-                            </div>
+                            </DialogFooter>
                         </form>
+                    </DialogContent>
+                </Dialog>
+            </div>
+
+            <div className="space-y-6">
+                <Card className="border-gray-200 shadow-sm">
+                    <CardHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50">
+                                <SlidersHorizontal className="h-5 w-5 text-amber-600" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-lg">
+                                    Group Grading Policies
+                                </CardTitle>
+                                <CardDescription>
+                                    These settings are shared across each group,
+                                    so professors and TAs see the same grades
+                                    and late cutoff.
+                                </CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <Separator />
+                    <CardContent className="space-y-4 pt-6">
+                        {loadingPolicies ? (
+                            <div className="flex items-center justify-center py-10">
+                                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                            </div>
+                        ) : groups.length === 0 ? (
+                            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                                No groups available yet.
+                            </div>
+                        ) : (
+                            groups.map((group) => {
+                                const form =
+                                    groupForms[group.id] || defaultFormValues;
+                                const saveState = groupSaveState[group.id] || {
+                                    saving: false,
+                                    message: "",
+                                    error: "",
+                                };
+
+                                return (
+                                    <div
+                                        key={group.id}
+                                        className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+                                    >
+                                        <div className="mb-4 flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h2 className="font-semibold text-gray-900">
+                                                        {group.name}
+                                                    </h2>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            groupRoles[group.id] ===
+                                                            "owner"
+                                                                ? "border-emerald-200 text-emerald-700"
+                                                                : "border-amber-200 text-amber-700"
+                                                        }
+                                                    >
+                                                        {groupRoles[group.id] ===
+                                                        "owner"
+                                                            ? "Owner"
+                                                            : "TA"}
+                                                    </Badge>
+                                                </div>
+                                                <p className="mt-1 text-sm text-gray-500">
+                                                    Edit the grade value for each
+                                                    attendance result.
+                                                </p>
+                                            </div>
+                                            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                                                Present default:{" "}
+                                                {formatGrade(
+                                                    defaultGradingSettings.present_grade,
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto rounded-xl border border-gray-200">
+                                            <div className="grid grid-cols-[minmax(140px,180px)_minmax(140px,220px)_1fr] bg-gray-50 px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500">
+                                                <div>Rule</div>
+                                                <div>Value</div>
+                                                <div>Notes</div>
+                                            </div>
+
+                                            <div className="divide-y divide-gray-200">
+                                                <div className="grid grid-cols-[minmax(140px,180px)_minmax(140px,220px)_1fr] items-center gap-4 px-4 py-4">
+                                                    <Label
+                                                        htmlFor={`present-${group.id}`}
+                                                        className="font-medium text-gray-900"
+                                                    >
+                                                        Present Grade
+                                                    </Label>
+                                                    <Input
+                                                        id={`present-${group.id}`}
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={form.present_grade}
+                                                        onChange={(e) =>
+                                                            handleGroupSettingChange(
+                                                                group.id,
+                                                                "present_grade",
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                    />
+                                                    <p className="text-sm text-gray-500">
+                                                        Grade applied when the
+                                                        student attends on time.
+                                                    </p>
+                                                </div>
+
+                                                <div className="grid grid-cols-[minmax(140px,180px)_minmax(140px,220px)_1fr] items-center gap-4 px-4 py-4">
+                                                    <Label
+                                                        htmlFor={`late-${group.id}`}
+                                                        className="font-medium text-gray-900"
+                                                    >
+                                                        Late Grade
+                                                    </Label>
+                                                    <Input
+                                                        id={`late-${group.id}`}
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={form.late_grade}
+                                                        onChange={(e) =>
+                                                            handleGroupSettingChange(
+                                                                group.id,
+                                                                "late_grade",
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                    />
+                                                    <p className="text-sm text-gray-500">
+                                                        Grade applied when the
+                                                        student is marked late.
+                                                    </p>
+                                                </div>
+
+                                                <div className="grid grid-cols-[minmax(140px,180px)_minmax(140px,220px)_1fr] items-center gap-4 px-4 py-4">
+                                                    <Label
+                                                        htmlFor={`excused-${group.id}`}
+                                                        className="font-medium text-gray-900"
+                                                    >
+                                                        Excused Grade
+                                                    </Label>
+                                                    <Input
+                                                        id={`excused-${group.id}`}
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={form.excused_grade}
+                                                        onChange={(e) =>
+                                                            handleGroupSettingChange(
+                                                                group.id,
+                                                                "excused_grade",
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                    />
+                                                    <p className="text-sm text-gray-500">
+                                                        Grade applied when the
+                                                        absence is excused
+                                                        manually.
+                                                    </p>
+                                                </div>
+
+                                                <div className="grid grid-cols-[minmax(140px,180px)_minmax(140px,220px)_1fr] items-center gap-4 px-4 py-4">
+                                                    <Label
+                                                        htmlFor={`absent-${group.id}`}
+                                                        className="font-medium text-gray-900"
+                                                    >
+                                                        Absent Grade
+                                                    </Label>
+                                                    <Input
+                                                        id={`absent-${group.id}`}
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={form.absent_grade}
+                                                        onChange={(e) =>
+                                                            handleGroupSettingChange(
+                                                                group.id,
+                                                                "absent_grade",
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                    />
+                                                    <p className="text-sm text-gray-500">
+                                                        Grade applied when the
+                                                        student has no attendance
+                                                        record.
+                                                    </p>
+                                                </div>
+
+                                                <div className="grid grid-cols-[minmax(140px,180px)_minmax(140px,220px)_1fr] items-center gap-4 px-4 py-4">
+                                                    <Label
+                                                        htmlFor={`late-after-${group.id}`}
+                                                        className="flex items-center gap-2 font-medium text-gray-900"
+                                                    >
+                                                        <Clock3 className="h-4 w-4" />
+                                                        Late After Minutes
+                                                    </Label>
+                                                    <Input
+                                                        id={`late-after-${group.id}`}
+                                                        type="number"
+                                                        min="0"
+                                                        step="1"
+                                                        placeholder="Leave blank to disable"
+                                                        value={form.late_after_minutes}
+                                                        onChange={(e) =>
+                                                            handleGroupSettingChange(
+                                                                group.id,
+                                                                "late_after_minutes",
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                    />
+                                                    <p className="text-sm text-gray-500">
+                                                        If a student scans after
+                                                        this many minutes from
+                                                        session start, the
+                                                        system assigns `Late`
+                                                        automatically.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {saveState.error && (
+                                            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+                                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                                {saveState.error}
+                                            </div>
+                                        )}
+
+                                        {saveState.message && (
+                                            <div className="mt-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-600">
+                                                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                                {saveState.message}
+                                            </div>
+                                        )}
+
+                                        <div className="mt-4 flex justify-end">
+                                            <Button
+                                                type="button"
+                                                onClick={() =>
+                                                    handleSaveGroupSettings(
+                                                        group.id,
+                                                    )
+                                                }
+                                                disabled={saveState.saving}
+                                            >
+                                                {saveState.saving && (
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                )}
+                                                Save Policy
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </CardContent>
                 </Card>
+
             </div>
         </div>
     );

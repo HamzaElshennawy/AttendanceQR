@@ -3,6 +3,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+    defaultGradingSettings,
+    formatGrade,
+    getAverageGrade,
+    getGradeValue,
+    normalizeGradingSettings,
+    type AttendanceStatus,
+    type GradingSettings,
+} from "@/lib/grading-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,6 +50,7 @@ import { Input } from "@/components/ui/input";
 interface SessionDetail {
     id: string;
     title: string | null;
+    category: "lecture" | "tutorial";
     duration_minutes: number;
     is_active: boolean;
     started_at: string;
@@ -51,11 +61,22 @@ interface SessionDetail {
     radius_meters: number | null;
 }
 
+const sessionCategoryCopy = {
+    lecture: {
+        label: "Lecture",
+        badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
+    },
+    tutorial: {
+        label: "Tutorial",
+        badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+    },
+} as const;
+
 interface AttendanceRecord {
     id: string;
     university_id: string;
     scanned_at: string;
-    status: "present" | "excused";
+    status: "present" | "excused" | "late";
     recorded_via: "qr" | "manual";
     note: string | null;
     student: {
@@ -68,7 +89,7 @@ interface AttendanceRecordRow {
     id: string;
     university_id: string;
     scanned_at: string;
-    status: "present" | "excused";
+    status: "present" | "excused" | "late";
     recorded_via: "qr" | "manual";
     note: string | null;
     student:
@@ -108,12 +129,14 @@ export default function SessionDetailPage() {
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
     const [allStudents, setAllStudents] = useState<Student[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
+    const [gradingSettings, setGradingSettings] =
+        useState<GradingSettings>(defaultGradingSettings);
     const [loading, setLoading] = useState(true);
     const [overrideOpen, setOverrideOpen] = useState(false);
     const [overrideStudent, setOverrideStudent] = useState<Student | null>(null);
-    const [overrideStatus, setOverrideStatus] = useState<"present" | "excused">(
-        "present",
-    );
+    const [overrideStatus, setOverrideStatus] = useState<
+        "present" | "excused" | "late"
+    >("present");
     const [overrideNote, setOverrideNote] = useState("");
     const [savingOverride, setSavingOverride] = useState(false);
 
@@ -148,7 +171,13 @@ export default function SessionDetailPage() {
     };
 
     const fetchData = useCallback(async () => {
-        const [sessionRes, attendanceRes, studentsRes, violationsRes] =
+        const [
+            sessionRes,
+            attendanceRes,
+            studentsRes,
+            gradingSettingsRes,
+            violationsRes,
+        ] =
             await Promise.all([
                 supabase
                     .from("sessions")
@@ -168,6 +197,13 @@ export default function SessionDetailPage() {
                     .eq("group_id", groupId)
                     .order("name"),
                 supabase
+                    .from("group_grading_settings")
+                    .select(
+                        "present_grade, late_grade, excused_grade, absent_grade, late_after_minutes",
+                    )
+                    .eq("group_id", groupId)
+                    .maybeSingle(),
+                supabase
                     .from("violations")
                     .select("*")
                     .eq("session_id", sessionId)
@@ -186,6 +222,7 @@ export default function SessionDetailPage() {
         setSession(sessionRes.data);
         setAttendance(normalizedAttendance);
         setAllStudents(studentsRes.data || []);
+        setGradingSettings(normalizeGradingSettings(gradingSettingsRes.data));
         setViolations(violationsRes.data || []);
         setLoading(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -268,11 +305,18 @@ export default function SessionDetailPage() {
             const attendanceRecord = attendance.find(
                 (record) => record.university_id === student.university_id,
             );
-            const hasAttended = attendanceRecord?.status === "present";
+            const gradeValue = formatGrade(
+                getGradeValue(
+                    attendanceRecord?.status as AttendanceStatus | undefined,
+                    gradingSettings,
+                ),
+            );
             let statusText = attendanceRecord
                 ? attendanceRecord.status === "excused"
                     ? "Excused"
-                    : "Present"
+                    : attendanceRecord.status === "late"
+                      ? "Late"
+                      : "Present"
                 : "Absent";
             let rowColor: string | null = null;
 
@@ -315,7 +359,7 @@ export default function SessionDetailPage() {
             const row = worksheet.addRow({
                 name: student.name,
                 id: student.university_id,
-                attended: hasAttended ? "1" : "0",
+                attended: gradeValue,
                 status: statusText,
             });
 
@@ -358,12 +402,27 @@ export default function SessionDetailPage() {
         );
     }
 
-    const presentCount = attendance.filter(
-        (record) => record.status === "present",
+    const lateCount = attendance.filter(
+        (record) => record.status === "late",
     ).length;
     const excusedCount = attendance.filter(
         (record) => record.status === "excused",
     ).length;
+    const totalGradePoints = allStudents.reduce((sum, student) => {
+        const record = attendance.find(
+            (attendanceRecord) =>
+                attendanceRecord.university_id === student.university_id,
+        );
+
+        return (
+            sum +
+            getGradeValue(
+                record?.status as AttendanceStatus | undefined,
+                gradingSettings,
+            )
+        );
+    }, 0);
+    const averageGrade = getAverageGrade(totalGradePoints, allStudents.length);
 
     return (
         <div>
@@ -439,6 +498,12 @@ export default function SessionDetailPage() {
                         ) : (
                             <Badge variant="secondary">Ended</Badge>
                         )}
+                        <Badge
+                            variant="outline"
+                            className={sessionCategoryCopy[session.category].badgeClass}
+                        >
+                            {sessionCategoryCopy[session.category].label}
+                        </Badge>
                         {session.latitude && (
                             <Badge
                                 variant="outline"
@@ -465,29 +530,32 @@ export default function SessionDetailPage() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
                 <div className="bg-white rounded-lg border p-4">
                     <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
                         <Users className="h-4 w-4" />
-                        Attendance
+                        Grade Total
                     </div>
                     <p className="text-2xl font-bold text-gray-900">
-                        {presentCount} / {allStudents.length}
+                        {formatGrade(totalGradePoints)}
                     </p>
                 </div>
                 <div className="bg-white rounded-lg border p-4">
                     <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
                         <CheckCircle2 className="h-4 w-4" />
-                        Rate
+                        Grade Avg
                     </div>
                     <p className="text-2xl font-bold text-gray-900">
-                        {allStudents.length > 0
-                            ? Math.round(
-                                  (presentCount / allStudents.length) *
-                                      100,
-                              )
-                            : 0}
-                        %
+                        {formatGrade(averageGrade)}
+                    </p>
+                </div>
+                <div className="bg-white rounded-lg border p-4">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+                        <Clock className="h-4 w-4" />
+                        Late
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                        {lateCount}
                     </p>
                 </div>
                 <div className="bg-white rounded-lg border p-4">
@@ -558,6 +626,7 @@ export default function SessionDetailPage() {
                                     <TableHead>Name</TableHead>
                                     <TableHead>University ID</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead>Grade</TableHead>
                                     <TableHead>Source</TableHead>
                                     <TableHead>Time</TableHead>
                                     <TableHead>Notes</TableHead>
@@ -589,6 +658,11 @@ export default function SessionDetailPage() {
                                                         <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
                                                             Excused
                                                         </Badge>
+                                                    ) : record.status ===
+                                                      "late" ? (
+                                                        <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+                                                            Late
+                                                        </Badge>
                                                     ) : (
                                                         <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                                                             Present
@@ -601,6 +675,16 @@ export default function SessionDetailPage() {
                                                     >
                                                         Absent
                                                     </Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="font-medium text-gray-700">
+                                                {formatGrade(
+                                                    getGradeValue(
+                                                        record?.status as
+                                                            | AttendanceStatus
+                                                            | undefined,
+                                                        gradingSettings,
+                                                    ),
                                                 )}
                                             </TableCell>
                                             <TableCell>
@@ -765,6 +849,17 @@ export default function SessionDetailPage() {
                                 <Button
                                     type="button"
                                     variant={
+                                        overrideStatus === "late"
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    onClick={() => setOverrideStatus("late")}
+                                >
+                                    Late
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={
                                         overrideStatus === "excused"
                                             ? "default"
                                             : "outline"
@@ -792,6 +887,11 @@ export default function SessionDetailPage() {
                                 rows={4}
                                 className="flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                             />
+                            <p className="text-xs text-gray-500">
+                                Late attendance currently counts as{" "}
+                                {formatGrade(gradingSettings.late_grade)} for
+                                this group.
+                            </p>
                         </div>
                     </div>
                     <DialogFooter>

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { defaultGradingSettings, shouldAutoMarkLate } from "@/lib/grading-settings";
 
 // Use service role to bypass RLS for attendance operations
 const supabaseAdmin = createClient(
@@ -214,6 +215,24 @@ export async function POST(request: Request) {
         );
     }
 
+    const { data: gradingSettings } = await supabaseAdmin
+        .from("group_grading_settings")
+        .select("late_after_minutes")
+        .eq("group_id", session.group_id)
+        .maybeSingle();
+
+    const lateAfterMinutes =
+        gradingSettings?.late_after_minutes == null
+            ? defaultGradingSettings.late_after_minutes
+            : Number(gradingSettings.late_after_minutes);
+
+    const attendanceStatus = shouldAutoMarkLate(
+        session.started_at,
+        lateAfterMinutes,
+    )
+        ? "late"
+        : "present";
+
     // 7. Record attendance
     const { error: insertError } = await supabaseAdmin
         .from("attendance_records")
@@ -221,6 +240,7 @@ export async function POST(request: Request) {
             session_id,
             student_id: student.id,
             university_id,
+            status: attendanceStatus,
             device_fingerprint: fingerprint || null,
         });
 
@@ -234,6 +254,10 @@ export async function POST(request: Request) {
     return NextResponse.json({
         success: true,
         student_name: student.name,
-        message: "Attendance recorded successfully!",
+        message:
+            attendanceStatus === "late"
+                ? "Attendance recorded as late."
+                : "Attendance recorded successfully!",
+        status: attendanceStatus,
     });
 }

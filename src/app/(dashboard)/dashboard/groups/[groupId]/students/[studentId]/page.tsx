@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+    defaultGradingSettings,
+    formatGrade,
+    getAverageGrade,
+    getGradeValue,
+    normalizeGradingSettings,
+    type AttendanceStatus,
+    type GradingSettings,
+} from "@/lib/grading-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,6 +26,7 @@ import {
     ArrowLeft,
     AlertTriangle,
     CheckCircle2,
+    Clock,
     FilePenLine,
     Loader2,
     ShieldAlert,
@@ -32,14 +42,26 @@ interface Student {
 interface Session {
     id: string;
     title: string | null;
+    category: "lecture" | "tutorial";
     started_at: string;
     is_active: boolean;
 }
 
+const sessionCategoryCopy = {
+    lecture: {
+        label: "Lecture",
+        badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
+    },
+    tutorial: {
+        label: "Tutorial",
+        badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+    },
+} as const;
+
 interface AttendanceRecord {
     session_id: string;
     scanned_at: string;
-    status: "present" | "excused";
+    status: "present" | "excused" | "late";
     recorded_via: "qr" | "manual";
     note: string | null;
 }
@@ -63,6 +85,8 @@ export default function StudentHistoryPage() {
     const [sessions, setSessions] = useState<Session[]>([]);
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
+    const [gradingSettings, setGradingSettings] =
+        useState<GradingSettings>(defaultGradingSettings);
     const [loading, setLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
@@ -79,11 +103,15 @@ export default function StudentHistoryPage() {
             return;
         }
 
-        const [{ data: sessionsData }, { data: attendanceData }] =
+        const [
+            { data: sessionsData },
+            { data: attendanceData },
+            { data: gradingSettingsData },
+        ] =
             await Promise.all([
                 supabase
                     .from("sessions")
-                    .select("id, title, started_at, is_active")
+                    .select("id, title, category, started_at, is_active")
                     .eq("group_id", groupId)
                     .order("started_at", { ascending: false }),
                 supabase
@@ -92,6 +120,13 @@ export default function StudentHistoryPage() {
                         "session_id, scanned_at, status, recorded_via, note",
                     )
                     .eq("student_id", studentId),
+                supabase
+                    .from("group_grading_settings")
+                    .select(
+                        "present_grade, late_grade, excused_grade, absent_grade, late_after_minutes",
+                    )
+                    .eq("group_id", groupId)
+                    .maybeSingle(),
             ]);
 
         const sessionIds = (sessionsData || []).map((session) => session.id);
@@ -108,6 +143,7 @@ export default function StudentHistoryPage() {
         setStudent(studentData);
         setSessions(sessionsData || []);
         setAttendance(attendanceData || []);
+        setGradingSettings(normalizeGradingSettings(gradingSettingsData));
         setViolations(violationsData || []);
         setLoading(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,25 +176,83 @@ export default function StudentHistoryPage() {
     const presentCount = attendance.filter(
         (record) => record.status === "present",
     ).length;
+    const lateCount = attendance.filter(
+        (record) => record.status === "late",
+    ).length;
     const excusedCount = attendance.filter(
         (record) => record.status === "excused",
     ).length;
     const totalSessions = endedSessions.length;
-    const attendanceRate =
-        totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : 0;
+    const overallGradeTotal = endedSessions.reduce((sum, session) => {
+        const record = attendanceBySession.get(session.id);
+        return (
+            sum +
+            getGradeValue(
+                record?.status as AttendanceStatus | undefined,
+                gradingSettings,
+            )
+        );
+    }, 0);
+    const lectureSessions = endedSessions.filter(
+        (session) => session.category === "lecture",
+    );
+    const tutorialSessions = endedSessions.filter(
+        (session) => session.category === "tutorial",
+    );
+    const lectureGradeTotal = lectureSessions.reduce((sum, session) => {
+        const record = attendanceBySession.get(session.id);
+        return (
+            sum +
+            getGradeValue(
+                record?.status as AttendanceStatus | undefined,
+                gradingSettings,
+            )
+        );
+    }, 0);
+    const tutorialGradeTotal = tutorialSessions.reduce((sum, session) => {
+        const record = attendanceBySession.get(session.id);
+        return (
+            sum +
+            getGradeValue(
+                record?.status as AttendanceStatus | undefined,
+                gradingSettings,
+            )
+        );
+    }, 0);
+    const overallGradeAverage = getAverageGrade(overallGradeTotal, totalSessions);
+    const lectureGradeAverage = getAverageGrade(
+        lectureGradeTotal,
+        lectureSessions.length,
+    );
+    const tutorialGradeAverage = getAverageGrade(
+        tutorialGradeTotal,
+        tutorialSessions.length,
+    );
 
     let recentAbsenceStreak = 0;
     for (const session of endedSessions) {
         const record = attendanceBySession.get(session.id);
-        if (record?.status === "present" || record?.status === "excused") {
+        if (
+            record?.status === "present" ||
+            record?.status === "excused" ||
+            record?.status === "late"
+        ) {
             break;
         }
         recentAbsenceStreak += 1;
     }
 
     const riskFlags = [
-        attendanceRate < 75
-            ? `Attendance rate is ${attendanceRate}%`
+        totalSessions > 0 && overallGradeAverage > gradingSettings.present_grade
+            ? `Average grade is ${formatGrade(overallGradeAverage)}`
+            : null,
+        lectureSessions.length > 0 &&
+        lectureGradeAverage > gradingSettings.present_grade
+            ? `Lecture grade average is ${formatGrade(lectureGradeAverage)}`
+            : null,
+        tutorialSessions.length > 0 &&
+        tutorialGradeAverage > gradingSettings.present_grade
+            ? `Tutorial grade average is ${formatGrade(tutorialGradeAverage)}`
             : null,
         recentAbsenceStreak >= 2
             ? `${recentAbsenceStreak} consecutive absences`
@@ -200,7 +294,7 @@ export default function StudentHistoryPage() {
                 )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-7">
                 <div className="rounded-lg border bg-white p-4">
                     <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
                         <CheckCircle2 className="h-4 w-4" />
@@ -221,11 +315,38 @@ export default function StudentHistoryPage() {
                 </div>
                 <div className="rounded-lg border bg-white p-4">
                     <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <XCircle className="h-4 w-4" />
-                        Attendance Rate
+                        <Clock className="h-4 w-4" />
+                        Late
                     </div>
                     <p className="text-2xl font-bold text-gray-900">
-                        {attendanceRate}%
+                        {lateCount}
+                    </p>
+                </div>
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
+                        <XCircle className="h-4 w-4" />
+                        Overall Avg Grade
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                        {formatGrade(overallGradeAverage)}
+                    </p>
+                </div>
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Lecture Avg Grade
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                        {formatGrade(lectureGradeAverage)}
+                    </p>
+                </div>
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Tutorial Avg Grade
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                        {formatGrade(tutorialGradeAverage)}
                     </p>
                 </div>
                 <div className="rounded-lg border bg-white p-4">
@@ -268,8 +389,10 @@ export default function StudentHistoryPage() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Session</TableHead>
+                            <TableHead>Type</TableHead>
                             <TableHead>Date</TableHead>
                             <TableHead>Status</TableHead>
+                            <TableHead>Grade</TableHead>
                             <TableHead>Source</TableHead>
                             <TableHead>Notes</TableHead>
                         </TableRow>
@@ -281,6 +404,22 @@ export default function StudentHistoryPage() {
                                 <TableRow key={session.id}>
                                     <TableCell className="font-medium">
                                         {session.title || "Untitled Session"}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge
+                                            variant="outline"
+                                            className={
+                                                sessionCategoryCopy[
+                                                    session.category
+                                                ].badgeClass
+                                            }
+                                        >
+                                            {
+                                                sessionCategoryCopy[
+                                                    session.category
+                                                ].label
+                                            }
+                                        </Badge>
                                     </TableCell>
                                     <TableCell className="text-sm text-gray-500">
                                         {new Date(
@@ -300,6 +439,10 @@ export default function StudentHistoryPage() {
                                             >
                                                 Absent
                                             </Badge>
+                                        ) : record.status === "late" ? (
+                                            <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+                                                Late
+                                            </Badge>
                                         ) : record.status === "excused" ? (
                                             <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
                                                 Excused
@@ -308,6 +451,16 @@ export default function StudentHistoryPage() {
                                             <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                                                 Present
                                             </Badge>
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="font-medium text-gray-700">
+                                        {formatGrade(
+                                            getGradeValue(
+                                                record?.status as
+                                                    | AttendanceStatus
+                                                    | undefined,
+                                                gradingSettings,
+                                            ),
                                         )}
                                     </TableCell>
                                     <TableCell>
