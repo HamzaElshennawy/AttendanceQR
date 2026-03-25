@@ -35,6 +35,7 @@ import {
 import {
     ArrowLeft,
     Plus,
+    Download,
     Upload,
     Trash2,
     Play,
@@ -142,6 +143,8 @@ export default function GroupDetailPage() {
     const [gettingLocation, setGettingLocation] = useState(false);
     const [qrRotating, setQrRotating] = useState(true);
     const [rotationInterval, setRotationInterval] = useState("15");
+    const [exportOpen, setExportOpen] = useState(false);
+    const [excusedExportValue, setExcusedExportValue] = useState("0");
 
     const fetchGroup = useCallback(async () => {
         const { data } = await supabase
@@ -457,6 +460,187 @@ export default function GroupDetailPage() {
         setStartingSession(false);
     };
 
+    const handleDownloadCumulativeExcel = async (excusedValue: "0" | "1") => {
+        if (!students.length || !sessions.length) return;
+
+        const orderedSessions = [...sessions].sort(
+            (a, b) =>
+                new Date(a.started_at).getTime() -
+                new Date(b.started_at).getTime(),
+        );
+
+        const { data: attendanceRows, error } = await supabase
+            .from("attendance_records")
+            .select("session_id, university_id, status")
+            .in(
+                "session_id",
+                orderedSessions.map((session) => session.id),
+            );
+
+        if (error) {
+            alert("Failed to load cumulative attendance.");
+            return;
+        }
+
+        const attendanceByKey = new Map(
+            (attendanceRows || []).map((row) => [
+                `${row.session_id}:${row.university_id}`,
+                row.status as "present" | "excused",
+            ]),
+        );
+
+        const ExcelJS = (await import("exceljs")).default;
+        const { saveAs } = (await import("file-saver")).default;
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Cumulative Attendance");
+
+        worksheet.columns = [
+            { header: "Name", key: "name", width: 30 },
+            { header: "University ID", key: "university_id", width: 18 },
+            ...orderedSessions.map((session) => ({
+                header: `${session.title || "Session"}\n${new Date(
+                    session.started_at,
+                ).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                })}`,
+                key: session.id,
+                width: 16,
+            })),
+            { header: "Present Total", key: "present_total", width: 14 },
+            { header: "Excused Total", key: "excused_total", width: 14 },
+            { header: "Attendance %", key: "attendance_percent", width: 14 },
+        ];
+
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).alignment = {
+            wrapText: true,
+            vertical: "middle",
+            horizontal: "center",
+        };
+        worksheet.getRow(1).fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFE5E7EB" },
+        };
+
+        for (const student of students) {
+            let presentTotal = 0;
+            let excusedTotal = 0;
+            let earnedTotal = 0;
+
+            const sessionCells = orderedSessions.reduce<Record<string, string>>(
+                (acc, session) => {
+                    const status = attendanceByKey.get(
+                        `${session.id}:${student.university_id}`,
+                    );
+
+                    if (status === "present") {
+                        presentTotal += 1;
+                        earnedTotal += 1;
+                        acc[session.id] = "1";
+                    } else if (status === "excused") {
+                        excusedTotal += 1;
+                        if (excusedValue === "1") {
+                            earnedTotal += 1;
+                        }
+                        acc[session.id] = excusedValue;
+                    } else {
+                        acc[session.id] = "0";
+                    }
+
+                    return acc;
+                },
+                {},
+            );
+
+            const attendancePercent = orderedSessions.length
+                ? Math.round((earnedTotal / orderedSessions.length) * 100)
+                : 0;
+
+            const row = worksheet.addRow({
+                name: student.name,
+                university_id: student.university_id,
+                ...sessionCells,
+                present_total: presentTotal,
+                excused_total: excusedTotal,
+                attendance_percent: `${attendancePercent}%`,
+            });
+
+            row.getCell("present_total").fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFDCFCE7" },
+            };
+            row.getCell("excused_total").fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFEF3C7" },
+            };
+
+            orderedSessions.forEach((session) => {
+                const sessionCell = row.getCell(session.id);
+                const status = attendanceByKey.get(
+                    `${session.id}:${student.university_id}`,
+                );
+
+                sessionCell.alignment = { horizontal: "center" };
+
+                if (status === "present") {
+                    sessionCell.fill = {
+                        type: "pattern",
+                        pattern: "solid",
+                        fgColor: { argb: "FFDCFCE7" },
+                    };
+                    return;
+                }
+
+                if (status === "excused") {
+                    sessionCell.note = {
+                        texts: [
+                            {
+                                text: "Excused session",
+                                font: { bold: true },
+                            },
+                        ],
+                    };
+                    sessionCell.fill = {
+                        type: "pattern",
+                        pattern: "solid",
+                        fgColor: { argb: "FFFEF3C7" },
+                    };
+                    sessionCell.font = {
+                        bold: true,
+                        color: { argb: "FF92400E" },
+                    };
+                    return;
+                }
+
+                sessionCell.fill = {
+                    type: "pattern",
+                    pattern: "solid",
+                    fgColor: { argb: "FFFEE2E2" },
+                };
+                sessionCell.font = {
+                    color: { argb: "FF991B1B" },
+                };
+            });
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+
+        saveAs(
+            blob,
+            `${group?.name || "group"}_cumulative_attendance_${
+                new Date().toISOString().split("T")[0]
+            }.xlsx`,
+        );
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-20">
@@ -519,8 +703,8 @@ export default function GroupDetailPage() {
                         </Badge>
                     </div>
                     <p className="text-gray-500 text-sm">
-                        {students.length} students · {sessions.length} sessions ·{" "}
-                        {team.length} team members
+                        {students.length} students · {sessions.length} sessions
+                        · {team.length} team members
                     </p>
                 </div>
             </div>
@@ -584,7 +768,79 @@ export default function GroupDetailPage() {
                     value="sessions"
                     className="space-y-4"
                 >
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
+                        <Dialog
+                            open={exportOpen}
+                            onOpenChange={setExportOpen}
+                        >
+                            <DialogTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    disabled={!students.length || !sessions.length}
+                                >
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download Cumulative Attendance
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>
+                                        Export Attendance Grades
+                                    </DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <Label>
+                                            How should excused sessions count?
+                                        </Label>
+                                        <Select
+                                            value={excusedExportValue}
+                                            onValueChange={setExcusedExportValue}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="0">
+                                                    Count excused as 0
+                                                </SelectItem>
+                                                <SelectItem value="1">
+                                                    Count excused as 1
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <p className="text-sm text-gray-500">
+                                        The Excel file will still visually mark
+                                        excused sessions, but this choice
+                                        controls the exported grade value and
+                                        attendance percentage.
+                                    </p>
+                                </div>
+                                <DialogFooter>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setExportOpen(false)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        onClick={async () => {
+                                            await handleDownloadCumulativeExcel(
+                                                excusedExportValue as
+                                                    | "0"
+                                                    | "1",
+                                            );
+                                            setExportOpen(false);
+                                        }}
+                                    >
+                                        Export Excel
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                         <Dialog
                             open={sessionOpen}
                             onOpenChange={(open) => {
@@ -1364,7 +1620,9 @@ export default function GroupDetailPage() {
                                     <TableRow>
                                         <TableHead>Name</TableHead>
                                         <TableHead>University ID</TableHead>
-                                        <TableHead className="w-32">History</TableHead>
+                                        <TableHead className="w-32">
+                                            History
+                                        </TableHead>
                                         <TableHead className="w-24"></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -1463,7 +1721,9 @@ export default function GroupDetailPage() {
                                 <DialogContent>
                                     <form onSubmit={handleAddMember}>
                                         <DialogHeader>
-                                            <DialogTitle>Add Team Member</DialogTitle>
+                                            <DialogTitle>
+                                                Add Team Member
+                                            </DialogTitle>
                                         </DialogHeader>
                                         <div className="space-y-4 py-4">
                                             <div className="space-y-2">
@@ -1483,8 +1743,8 @@ export default function GroupDetailPage() {
                                                     required
                                                 />
                                                 <p className="text-xs text-gray-500">
-                                                    The member must already
-                                                    have a Quorum account.
+                                                    The member must already have
+                                                    a Quorum account.
                                                 </p>
                                             </div>
                                             <div className="space-y-2">
@@ -1517,7 +1777,9 @@ export default function GroupDetailPage() {
                                             <Button
                                                 type="button"
                                                 variant="outline"
-                                                onClick={() => setTeamOpen(false)}
+                                                onClick={() =>
+                                                    setTeamOpen(false)
+                                                }
                                             >
                                                 Cancel
                                             </Button>
@@ -1595,4 +1857,3 @@ export default function GroupDetailPage() {
         </div>
     );
 }
-

@@ -8,9 +8,21 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
     {
-        version: "v0.3.0",
+        version: "v0.4.0",
         date: "March 25, 2026",
         tag: "Latest",
+        title: "Feedback, And Attendance Exporting",
+        notes: [
+            "Users can now submit structured feedback from inside the dashboard.",
+            "Feedback now supports screenshots, recordings, PDFs, drag-and-drop upload, and per-file removal before submit.",
+            "Groups can now export one cumulative attendance Excel file across all sessions.",
+            "Professors can choose whether excused sessions count as 0 or 1 during cumulative export, while excused sessions remain visually marked.",
+        ],
+    },
+    {
+        version: "v0.3.0",
+        date: "March 25, 2026",
+        tag: "Workflow",
         title: "Shared Teaching And Attendance Follow-Up",
         notes: [
             "Groups can now be shared with other instructors, including TAs and co-owners.",

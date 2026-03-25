@@ -7,7 +7,15 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { FileText, LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
+import {
+    ShieldCheck,
+    FilePenLine,
+    FileText,
+    LayoutDashboard,
+    LogOut,
+    Menu,
+    Settings,
+} from "lucide-react";
 import { QuorumIcon } from "@/components/QuorumLogo";
 
 export default function DashboardLayout({
@@ -16,6 +24,7 @@ export default function DashboardLayout({
     children: React.ReactNode;
 }) {
     const [professorName, setProfessorName] = useState("");
+    const [isAdmin, setIsAdmin] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const router = useRouter();
     const pathname = usePathname();
@@ -27,12 +36,23 @@ export default function DashboardLayout({
                 data: { user },
             } = await supabase.auth.getUser();
             if (user) {
-                const { data } = await supabase
-                    .from("professors")
-                    .select("name")
-                    .eq("id", user.id)
-                    .single();
-                if (data) setProfessorName(data.name);
+                const [{ data: professor }, { data: adminRow }] =
+                    await Promise.all([
+                        supabase
+                            .from("professors")
+                            .select("name")
+                            .eq("id", user.id)
+                            .single(),
+                        supabase
+                            .from("system_admins")
+                            .select("user_id")
+                            .eq("user_id", user.id)
+                            .maybeSingle(),
+                    ]);
+                if (professor) {
+                    setProfessorName(professor.name);
+                }
+                setIsAdmin(!!adminRow?.user_id);
             }
         };
         fetchProfile();
@@ -50,10 +70,24 @@ export default function DashboardLayout({
 
     const bottomNavItems = [
         {
+            href: "/dashboard/feedback",
+            label: "Feedback",
+            icon: FilePenLine,
+        },
+        {
             href: "/dashboard/release-notes",
             label: "Release Notes",
             icon: FileText,
         },
+        ...(isAdmin
+            ? [
+                  {
+                      href: "/dashboard/admin/feedback",
+                      label: "Admin Feedback",
+                      icon: ShieldCheck,
+                  },
+              ]
+            : []),
         { href: "/dashboard/settings", label: "Settings", icon: Settings },
     ];
 
