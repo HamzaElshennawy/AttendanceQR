@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
     Table,
     TableBody,
     TableCell,
@@ -27,6 +34,7 @@ import {
     Pencil,
     Check,
     X,
+    FilePenLine,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -47,6 +55,9 @@ interface AttendanceRecord {
     id: string;
     university_id: string;
     scanned_at: string;
+    status: "present" | "excused";
+    recorded_via: "qr" | "manual";
+    note: string | null;
     student: {
         name: string;
         university_id: string;
@@ -80,6 +91,13 @@ export default function SessionDetailPage() {
     const [allStudents, setAllStudents] = useState<Student[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [overrideOpen, setOverrideOpen] = useState(false);
+    const [overrideStudent, setOverrideStudent] = useState<Student | null>(null);
+    const [overrideStatus, setOverrideStatus] = useState<"present" | "excused">(
+        "present",
+    );
+    const [overrideNote, setOverrideNote] = useState("");
+    const [savingOverride, setSavingOverride] = useState(false);
 
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editTitle, setEditTitle] = useState("");
@@ -121,7 +139,9 @@ export default function SessionDetailPage() {
                     .single(),
                 supabase
                     .from("attendance_records")
-                    .select("*, student:students(name, university_id)")
+                    .select(
+                        "id, university_id, scanned_at, status, recorded_via, note, student:students(name, university_id)",
+                    )
                     .eq("session_id", sessionId)
                     .order("scanned_at"),
                 supabase
@@ -147,6 +167,49 @@ export default function SessionDetailPage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const openOverrideDialog = (
+        student: Student,
+        record?: AttendanceRecord | undefined,
+    ) => {
+        setOverrideStudent(student);
+        setOverrideStatus(record?.status || "present");
+        setOverrideNote(record?.note || "");
+        setOverrideOpen(true);
+    };
+
+    const handleSaveOverride = async () => {
+        if (!overrideStudent) return;
+
+        setSavingOverride(true);
+        try {
+            const res = await fetch(
+                `/api/sessions/${sessionId}/attendance-override`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        studentId: overrideStudent.id,
+                        status: overrideStatus,
+                        note: overrideNote,
+                    }),
+                },
+            );
+
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.error || "Failed to save override.");
+                return;
+            }
+
+            setOverrideOpen(false);
+            setOverrideStudent(null);
+            setOverrideNote("");
+            fetchData();
+        } finally {
+            setSavingOverride(false);
+        }
+    };
 
     const handleDownloadExcel = async () => {
         if (!allStudents.length) return;
@@ -174,11 +237,16 @@ export default function SessionDetailPage() {
             fgColor: { argb: "FFE0E0E0" },
         };
 
-        const attendedIds = new Set(attendance.map((a) => a.university_id));
-
         allStudents.forEach((student) => {
-            const hasAttended = attendedIds.has(student.university_id);
-            let statusText = hasAttended ? "Present" : "Absent";
+            const attendanceRecord = attendance.find(
+                (record) => record.university_id === student.university_id,
+            );
+            const hasAttended = attendanceRecord?.status === "present";
+            let statusText = attendanceRecord
+                ? attendanceRecord.status === "excused"
+                    ? "Excused"
+                    : "Present"
+                : "Absent";
             let rowColor: string | null = null;
 
             // Check for violations matching this student
@@ -262,6 +330,13 @@ export default function SessionDetailPage() {
             </div>
         );
     }
+
+    const presentCount = attendance.filter(
+        (record) => record.status === "present",
+    ).length;
+    const excusedCount = attendance.filter(
+        (record) => record.status === "excused",
+    ).length;
 
     return (
         <div>
@@ -370,7 +445,7 @@ export default function SessionDetailPage() {
                         Attendance
                     </div>
                     <p className="text-2xl font-bold text-gray-900">
-                        {attendance.length} / {allStudents.length}
+                        {presentCount} / {allStudents.length}
                     </p>
                 </div>
                 <div className="bg-white rounded-lg border p-4">
@@ -381,11 +456,20 @@ export default function SessionDetailPage() {
                     <p className="text-2xl font-bold text-gray-900">
                         {allStudents.length > 0
                             ? Math.round(
-                                  (attendance.length / allStudents.length) *
+                                  (presentCount / allStudents.length) *
                                       100,
                               )
                             : 0}
                         %
+                    </p>
+                </div>
+                <div className="bg-white rounded-lg border p-4">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+                        <FilePenLine className="h-4 w-4" />
+                        Excused
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                        {excusedCount}
                     </p>
                 </div>
                 <div className="bg-white rounded-lg border p-4">
@@ -447,7 +531,10 @@ export default function SessionDetailPage() {
                                     <TableHead>Name</TableHead>
                                     <TableHead>University ID</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead>Source</TableHead>
                                     <TableHead>Time</TableHead>
+                                    <TableHead>Notes</TableHead>
+                                    <TableHead className="w-28"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -470,9 +557,16 @@ export default function SessionDetailPage() {
                                             </TableCell>
                                             <TableCell>
                                                 {record ? (
-                                                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                                                        Present
-                                                    </Badge>
+                                                    record.status ===
+                                                    "excused" ? (
+                                                        <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+                                                            Excused
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                                                            Present
+                                                        </Badge>
+                                                    )
                                                 ) : (
                                                     <Badge
                                                         variant="secondary"
@@ -480,6 +574,26 @@ export default function SessionDetailPage() {
                                                     >
                                                         Absent
                                                     </Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {record ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            record.recorded_via ===
+                                                            "manual"
+                                                                ? "border-blue-200 text-blue-700"
+                                                                : ""
+                                                        }
+                                                    >
+                                                        {record.recorded_via ===
+                                                        "manual"
+                                                            ? "Manual"
+                                                            : "QR"}
+                                                    </Badge>
+                                                ) : (
+                                                    "—"
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-gray-500 text-sm">
@@ -494,6 +608,33 @@ export default function SessionDetailPage() {
                                                           },
                                                       )
                                                     : "—"}
+                                            </TableCell>
+                                            <TableCell className="text-sm text-gray-500">
+                                                {record?.note || "—"}
+                                            </TableCell>
+                                            <TableCell>
+                                                {!record ||
+                                                record.recorded_via ===
+                                                    "manual" ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            openOverrideDialog(
+                                                                student,
+                                                                record,
+                                                            )
+                                                        }
+                                                    >
+                                                        {record
+                                                            ? "Update"
+                                                            : "Override"}
+                                                    </Button>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">
+                                                        QR locked
+                                                    </span>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     );
@@ -560,6 +701,93 @@ export default function SessionDetailPage() {
                     </TabsContent>
                 )}
             </Tabs>
+
+            <Dialog
+                open={overrideOpen}
+                onOpenChange={setOverrideOpen}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Attendance Override</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div>
+                            <p className="font-medium text-gray-900">
+                                {overrideStudent?.name}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                {overrideStudent?.university_id}
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-sm font-medium text-gray-700">
+                                Status
+                            </p>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant={
+                                        overrideStatus === "present"
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    onClick={() => setOverrideStatus("present")}
+                                >
+                                    Present
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={
+                                        overrideStatus === "excused"
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    onClick={() => setOverrideStatus("excused")}
+                                >
+                                    Excused
+                                </Button>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label
+                                htmlFor="overrideNote"
+                                className="text-sm font-medium text-gray-700"
+                            >
+                                Note
+                            </label>
+                            <textarea
+                                id="overrideNote"
+                                value={overrideNote}
+                                onChange={(e) =>
+                                    setOverrideNote(e.target.value)
+                                }
+                                placeholder="Optional reason or explanation"
+                                rows={4}
+                                className="flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setOverrideOpen(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleSaveOverride}
+                            disabled={savingOverride}
+                        >
+                            {savingOverride && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Save Override
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

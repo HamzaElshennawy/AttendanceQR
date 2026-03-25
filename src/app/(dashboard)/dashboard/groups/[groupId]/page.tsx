@@ -52,12 +52,20 @@ import Papa from "papaparse";
 interface Group {
     id: string;
     name: string;
+    professor_id: string;
 }
 
 interface Student {
     id: string;
     university_id: string;
     name: string;
+}
+
+interface TeamMember {
+    professor_id: string;
+    name: string;
+    email: string;
+    role: "owner" | "ta";
 }
 
 interface Session {
@@ -83,6 +91,8 @@ export default function GroupDetailPage() {
     const [students, setStudents] = useState<Student[]>([]);
     const [sessions, setSessions] = useState<Session[]>([]);
     const [loading, setLoading] = useState(true);
+    const [currentUserId, setCurrentUserId] = useState("");
+    const [team, setTeam] = useState<TeamMember[]>([]);
 
     // Rename group
     const [renameOpen, setRenameOpen] = useState(false);
@@ -101,6 +111,12 @@ export default function GroupDetailPage() {
     const [editStudentName, setEditStudentName] = useState("");
     const [editStudentId, setEditStudentId] = useState("");
     const [editingStudent, setEditingStudent] = useState(false);
+
+    // Team management
+    const [teamOpen, setTeamOpen] = useState(false);
+    const [memberEmail, setMemberEmail] = useState("");
+    const [memberRole, setMemberRole] = useState<"owner" | "ta">("ta");
+    const [addingMember, setAddingMember] = useState(false);
 
     // CSV upload dialog
     const [csvOpen, setCsvOpen] = useState(false);
@@ -136,6 +152,14 @@ export default function GroupDetailPage() {
         setGroup(data);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupId]);
+
+    const fetchCurrentUser = useCallback(async () => {
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+        setCurrentUserId(user?.id || "");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const fetchStudents = useCallback(async () => {
         const { data } = await supabase
@@ -179,11 +203,34 @@ export default function GroupDetailPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupId]);
 
-    useEffect(() => {
-        Promise.all([fetchGroup(), fetchStudents(), fetchSessions()]).then(() =>
-            setLoading(false),
+    const fetchTeam = useCallback(async () => {
+        const res = await fetch(`/api/groups/${groupId}/members`);
+        if (!res.ok) {
+            setTeam([]);
+            return;
+        }
+
+        const data = await res.json();
+        const members = (data.team || []) as TeamMember[];
+
+        setTeam(
+            members.sort((a, b) => {
+                if (a.role === "owner" && b.role !== "owner") return -1;
+                if (a.role !== "owner" && b.role === "owner") return 1;
+                return a.name.localeCompare(b.name);
+            }),
         );
-    }, [fetchGroup, fetchStudents, fetchSessions]);
+    }, [groupId]);
+
+    useEffect(() => {
+        Promise.all([
+            fetchCurrentUser(),
+            fetchGroup(),
+            fetchStudents(),
+            fetchSessions(),
+            fetchTeam(),
+        ]).then(() => setLoading(false));
+    }, [fetchCurrentUser, fetchGroup, fetchStudents, fetchSessions, fetchTeam]);
 
     // Rename group
     const handleRenameGroup = async (e: React.FormEvent) => {
@@ -237,6 +284,53 @@ export default function GroupDetailPage() {
         setEditingStudent(false);
         setEditStudentOpen(false);
         fetchStudents();
+    };
+
+    const handleAddMember = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setAddingMember(true);
+
+        try {
+            const res = await fetch(`/api/groups/${groupId}/members`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: memberEmail,
+                    role: memberRole,
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.error || "Failed to add team member.");
+                return;
+            }
+
+            setMemberEmail("");
+            setMemberRole("ta");
+            setTeamOpen(false);
+            fetchTeam();
+        } finally {
+            setAddingMember(false);
+        }
+    };
+
+    const handleRemoveMember = async (professorId: string) => {
+        if (!confirm("Remove this member from the group?")) return;
+
+        const res = await fetch(`/api/groups/${groupId}/members`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ professorId }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            alert(data.error || "Failed to remove member.");
+            return;
+        }
+
+        fetchTeam();
     };
 
     // Delete session
@@ -379,6 +473,11 @@ export default function GroupDetailPage() {
         );
     }
 
+    const currentRole =
+        team.find((member) => member.professor_id === currentUserId)?.role ||
+        (group.professor_id === currentUserId ? "owner" : "ta");
+    const isOwner = currentRole === "owner";
+
     return (
         <div>
             {/* Header */}
@@ -395,20 +494,33 @@ export default function GroupDetailPage() {
                         <h1 className="text-2xl font-bold text-gray-900">
                             {group.name}
                         </h1>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-gray-400 hover:text-gray-600"
-                            onClick={() => {
-                                setNewGroupName(group.name);
-                                setRenameOpen(true);
-                            }}
+                        {isOwner && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-gray-400 hover:text-gray-600"
+                                onClick={() => {
+                                    setNewGroupName(group.name);
+                                    setRenameOpen(true);
+                                }}
+                            >
+                                <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                        )}
+                        <Badge
+                            variant="outline"
+                            className={
+                                isOwner
+                                    ? "border-emerald-200 text-emerald-700"
+                                    : "border-amber-200 text-amber-700"
+                            }
                         >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                            {isOwner ? "Owner" : "TA"}
+                        </Badge>
                     </div>
                     <p className="text-gray-500 text-sm">
-                        {students.length} students · {sessions.length} sessions
+                        {students.length} students · {sessions.length} sessions ·{" "}
+                        {team.length} team members
                     </p>
                 </div>
             </div>
@@ -464,6 +576,7 @@ export default function GroupDetailPage() {
                 <TabsList>
                     <TabsTrigger value="sessions">Sessions</TabsTrigger>
                     <TabsTrigger value="students">Students</TabsTrigger>
+                    <TabsTrigger value="team">Team</TabsTrigger>
                 </TabsList>
 
                 {/* Sessions Tab */}
@@ -1251,6 +1364,7 @@ export default function GroupDetailPage() {
                                     <TableRow>
                                         <TableHead>Name</TableHead>
                                         <TableHead>University ID</TableHead>
+                                        <TableHead className="w-32">History</TableHead>
                                         <TableHead className="w-24"></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -1262,6 +1376,19 @@ export default function GroupDetailPage() {
                                             </TableCell>
                                             <TableCell>
                                                 {student.university_id}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() =>
+                                                        router.push(
+                                                            `/dashboard/groups/${groupId}/students/${student.id}`,
+                                                        )
+                                                    }
+                                                >
+                                                    View History
+                                                </Button>
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1">
@@ -1307,7 +1434,165 @@ export default function GroupDetailPage() {
                         </div>
                     )}
                 </TabsContent>
+
+                <TabsContent
+                    value="team"
+                    className="space-y-4"
+                >
+                    <div className="flex items-center justify-between rounded-lg border bg-white p-4">
+                        <div>
+                            <h3 className="font-semibold text-gray-900">
+                                Shared Access
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                Owners can manage members. TAs can manage
+                                students, sessions, and attendance overrides.
+                            </p>
+                        </div>
+                        {isOwner && (
+                            <Dialog
+                                open={teamOpen}
+                                onOpenChange={setTeamOpen}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add Member
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <form onSubmit={handleAddMember}>
+                                        <DialogHeader>
+                                            <DialogTitle>Add Team Member</DialogTitle>
+                                        </DialogHeader>
+                                        <div className="space-y-4 py-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="memberEmail">
+                                                    Account Email
+                                                </Label>
+                                                <Input
+                                                    id="memberEmail"
+                                                    type="email"
+                                                    placeholder="ta@university.edu"
+                                                    value={memberEmail}
+                                                    onChange={(e) =>
+                                                        setMemberEmail(
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    required
+                                                />
+                                                <p className="text-xs text-gray-500">
+                                                    The member must already
+                                                    have a Quorum account.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Role</Label>
+                                                <Select
+                                                    value={memberRole}
+                                                    onValueChange={(value) =>
+                                                        setMemberRole(
+                                                            value as
+                                                                | "owner"
+                                                                | "ta",
+                                                        )
+                                                    }
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="ta">
+                                                            TA
+                                                        </SelectItem>
+                                                        <SelectItem value="owner">
+                                                            Shared Owner
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setTeamOpen(false)}
+                                            >
+                                                Cancel
+                                            </Button>
+                                            <Button
+                                                type="submit"
+                                                disabled={addingMember}
+                                            >
+                                                {addingMember && (
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                )}
+                                                Save Access
+                                            </Button>
+                                        </DialogFooter>
+                                    </form>
+                                </DialogContent>
+                            </Dialog>
+                        )}
+                    </div>
+
+                    <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead>Email</TableHead>
+                                    <TableHead>Role</TableHead>
+                                    <TableHead className="w-24"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {team.map((member) => (
+                                    <TableRow key={member.professor_id}>
+                                        <TableCell className="font-medium">
+                                            {member.name}
+                                        </TableCell>
+                                        <TableCell>{member.email}</TableCell>
+                                        <TableCell>
+                                            <Badge
+                                                variant="outline"
+                                                className={
+                                                    member.role === "owner"
+                                                        ? "border-emerald-200 text-emerald-700"
+                                                        : "border-amber-200 text-amber-700"
+                                                }
+                                            >
+                                                {member.role === "owner"
+                                                    ? "Owner"
+                                                    : "TA"}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            {isOwner &&
+                                                member.role !== "owner" && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-gray-400 hover:text-red-600"
+                                                        onClick={() =>
+                                                            handleRemoveMember(
+                                                                member.professor_id,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </TabsContent>
             </Tabs>
         </div>
     );
 }
+

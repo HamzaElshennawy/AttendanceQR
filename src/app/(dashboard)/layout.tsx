@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
+import { FileText, LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
 import { QuorumIcon } from "@/components/QuorumLogo";
 
 export default function DashboardLayout({
@@ -46,6 +46,14 @@ export default function DashboardLayout({
 
     const navItems = [
         { href: "/dashboard", label: "Groups", icon: LayoutDashboard },
+    ];
+
+    const bottomNavItems = [
+        {
+            href: "/dashboard/release-notes",
+            label: "Release Notes",
+            icon: FileText,
+        },
         { href: "/dashboard/settings", label: "Settings", icon: Settings },
     ];
 
@@ -87,6 +95,23 @@ export default function DashboardLayout({
             </nav>
             <Separator />
             <div className="p-4">
+                <div className="space-y-1 mb-4">
+                    {bottomNavItems.map((item) => (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                isActive(item.href)
+                                    ? "bg-blue-50 text-blue-700"
+                                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                            }`}
+                        >
+                            <item.icon className="h-5 w-5" />
+                            {item.label}
+                        </Link>
+                    ))}
+                </div>
                 <div className="flex items-center gap-3 px-3 py-2 mb-2">
                     <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
                         <span className="text-sm font-semibold text-blue-700">

@@ -21,11 +21,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Plus, Users, ClipboardList, ChevronRight, Loader2, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface Group {
   id: string;
   name: string;
   created_at: string;
+  professor_id: string;
+  access_role: "owner" | "ta";
   student_count: number;
   session_count: number;
 }
@@ -40,10 +43,34 @@ export default function DashboardPage() {
   const supabase = createClient();
 
   const fetchGroups = async () => {
-    const { data: groupsData } = await supabase
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data: memberships, error: membershipsError } = user
+      ? await supabase
+          .from("group_memberships")
+          .select("group_id, role")
+          .eq("professor_id", user.id)
+      : { data: [], error: null };
+
+    if (membershipsError) {
+      console.warn("Falling back to owner-only groups view:", membershipsError.message);
+    }
+
+    const membershipRoleByGroup = new Map(
+      (memberships || []).map((membership) => [membership.group_id, membership.role as "owner" | "ta"])
+    );
+
+    const { data: groupsData, error: groupsError } = await supabase
       .from("groups")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (groupsError) {
+      console.error("Failed to load groups:", groupsError.message);
+      setGroups([]);
+      setLoading(false);
+      return;
+    }
 
     if (groupsData) {
       const groupsWithCounts = await Promise.all(
@@ -60,6 +87,10 @@ export default function DashboardPage() {
 
           return {
             ...group,
+            access_role:
+              group.professor_id === user?.id
+                ? "owner"
+                : membershipRoleByGroup.get(group.id) || "ta",
             student_count: studentCount || 0,
             session_count: sessionCount || 0,
           };
@@ -181,15 +212,29 @@ export default function DashboardPage() {
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
-                  <CardTitle className="text-lg">{group.name}</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-600"
-                    onClick={(e) => handleDeleteGroup(group.id, e)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="space-y-2">
+                    <CardTitle className="text-lg">{group.name}</CardTitle>
+                    <Badge
+                      variant="outline"
+                      className={
+                        group.access_role === "owner"
+                          ? "border-emerald-200 text-emerald-700"
+                          : "border-amber-200 text-amber-700"
+                      }
+                    >
+                      {group.access_role === "owner" ? "Owner" : "TA"}
+                    </Badge>
+                  </div>
+                  {group.access_role === "owner" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-600"
+                      onClick={(e) => handleDeleteGroup(group.id, e)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
