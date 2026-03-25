@@ -64,6 +64,24 @@ interface AttendanceRecord {
     };
 }
 
+interface AttendanceRecordRow {
+    id: string;
+    university_id: string;
+    scanned_at: string;
+    status: "present" | "excused";
+    recorded_via: "qr" | "manual";
+    note: string | null;
+    student:
+        | {
+              name: string;
+              university_id: string;
+          }
+        | {
+              name: string;
+              university_id: string;
+          }[];
+}
+
 interface Student {
     id: string;
     name: string;
@@ -156,8 +174,17 @@ export default function SessionDetailPage() {
                     .order("created_at", { ascending: false }),
             ]);
 
+        const normalizedAttendance = ((attendanceRes.data || []) as AttendanceRecordRow[]).map(
+            (record) => ({
+                ...record,
+                student: Array.isArray(record.student)
+                    ? record.student[0]
+                    : record.student,
+            }),
+        );
+
         setSession(sessionRes.data);
-        setAttendance(attendanceRes.data || []);
+        setAttendance(normalizedAttendance);
         setAllStudents(studentsRes.data || []);
         setViolations(violationsRes.data || []);
         setLoading(false);
