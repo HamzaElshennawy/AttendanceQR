@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Users, ClipboardList, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useAppDialog } from "@/components/AppDialogProvider";
 
 interface Group {
   id: string;
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+  const { showConfirm } = useAppDialog();
 
   const fetchGroups = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -128,7 +130,14 @@ export default function DashboardPage() {
 
   const handleDeleteGroup = async (groupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this group? This will delete all students, sessions, and attendance records.")) return;
+    const confirmed = await showConfirm({
+      title: "Delete Group",
+      description:
+        "This will permanently delete the group, students, sessions, and attendance records.",
+      confirmLabel: "Delete Group",
+      variant: "error",
+    });
+    if (!confirmed) return;
 
     await supabase.from("groups").delete().eq("id", groupId);
     fetchGroups();

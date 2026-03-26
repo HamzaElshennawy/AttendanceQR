@@ -17,6 +17,7 @@ import {
     Settings,
 } from "lucide-react";
 import { QuorumIcon } from "@/components/QuorumLogo";
+import { DashboardSearch } from "@/components/DashboardSearch";
 
 export default function DashboardLayout({
     children,
@@ -213,6 +214,16 @@ export default function DashboardLayout({
 
             {/* Main Content */}
             <main className="lg:pl-64">
+                <div className="sticky top-0 z-30 hidden border-b border-gray-200 bg-white/90 backdrop-blur lg:block">
+                    <div className="mx-auto flex max-w-6xl items-center justify-end px-4 py-3 sm:px-6 lg:px-8">
+                        <DashboardSearch />
+                    </div>
+                </div>
+                <div className="border-b border-gray-200 bg-white px-4 py-3 lg:hidden">
+                    <div className="mx-auto max-w-6xl">
+                        <DashboardSearch />
+                    </div>
+                </div>
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     {children}
                 </div>

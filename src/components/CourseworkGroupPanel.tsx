@@ -1,0 +1,882 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+    courseworkKindOptions,
+    formatCourseworkKind,
+    formatCourseworkScore,
+    getCourseworkKindBadgeClass,
+    type CourseworkAssessment,
+    type CourseworkAssessmentKind,
+    type CourseworkAssessmentStats,
+    type SessionCategory,
+} from "@/lib/coursework";
+import {
+    defaultGradingSettings,
+    formatGrade,
+    getGradeValue,
+    normalizeGradingSettings,
+    type AttendanceStatus,
+} from "@/lib/grading-settings";
+import { AssessmentGradesDialog } from "@/components/coursework/AssessmentGradesDialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { Download, FileSpreadsheet, Loader2, Plus, Trash2 } from "lucide-react";
+import { useAppDialog } from "@/components/AppDialogProvider";
+
+interface Student {
+    id: string;
+    name: string;
+    university_id: string;
+}
+
+interface SessionOption {
+    id: string;
+    title: string | null;
+    category: SessionCategory;
+    started_at: string;
+}
+
+interface AssessmentRow extends Omit<CourseworkAssessment, "session"> {
+    session:
+        | {
+              title: string | null;
+              category: SessionCategory;
+          }
+        | {
+              title: string | null;
+              category: SessionCategory;
+          }[]
+        | null;
+}
+
+interface GradeSummaryRow {
+    assessment_id: string;
+    score: number;
+}
+
+function normalizeAssessment(
+    assessment: AssessmentRow,
+): CourseworkAssessment {
+    return {
+        ...assessment,
+        session: Array.isArray(assessment.session)
+            ? (assessment.session[0] ?? null)
+            : assessment.session,
+    };
+}
+
+export function CourseworkGroupPanel({
+    groupId,
+    students,
+    sessions,
+}: {
+    groupId: string;
+    students: Student[];
+    sessions: SessionOption[];
+}) {
+    const supabase = createClient();
+    const { showAlert, showConfirm } = useAppDialog();
+    const [assessments, setAssessments] = useState<CourseworkAssessment[]>([]);
+    const [statsByAssessment, setStatsByAssessment] = useState<
+        Record<string, CourseworkAssessmentStats>
+    >({});
+    const [loading, setLoading] = useState(true);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [manageOpen, setManageOpen] = useState(false);
+    const [downloadOpen, setDownloadOpen] = useState(false);
+    const [downloading, setDownloading] = useState(false);
+    const [selectedAssessment, setSelectedAssessment] =
+        useState<CourseworkAssessment | null>(null);
+
+    const [title, setTitle] = useState("");
+    const [kind, setKind] = useState<CourseworkAssessmentKind>("quiz");
+    const [maxScore, setMaxScore] = useState("10");
+    const [category, setCategory] = useState<SessionCategory | "none">("none");
+    const [sessionId, setSessionId] = useState<string>("none");
+
+    const loadAssessments = useCallback(async () => {
+        setLoading(true);
+
+        const { data, error } = await supabase
+            .from("coursework_assessments")
+            .select(
+                "id, group_id, session_id, title, assessment_kind, max_score, category, assessment_date, created_at, session:sessions(title, category)",
+            )
+            .eq("group_id", groupId)
+            .order("assessment_date", { ascending: false });
+
+        if (error) {
+            setAssessments([]);
+            setStatsByAssessment({});
+            setLoading(false);
+            return;
+        }
+
+        const normalized = ((data || []) as AssessmentRow[]).map(
+            normalizeAssessment,
+        );
+        setAssessments(normalized);
+
+        if (!normalized.length) {
+            setStatsByAssessment({});
+            setLoading(false);
+            return;
+        }
+
+        const { data: gradeRows } = await supabase
+            .from("coursework_grades")
+            .select("assessment_id, score")
+            .in(
+                "assessment_id",
+                normalized.map((assessment) => assessment.id),
+            );
+
+        const grouped = ((gradeRows || []) as GradeSummaryRow[]).reduce<
+            Record<string, CourseworkAssessmentStats>
+        >((acc, row) => {
+            const current = acc[row.assessment_id] || {
+                gradedCount: 0,
+                averageScore: 0,
+            };
+
+            const total =
+                current.averageScore * current.gradedCount + row.score;
+            current.gradedCount += 1;
+            current.averageScore = total / current.gradedCount;
+            acc[row.assessment_id] = current;
+            return acc;
+        }, {});
+
+        setStatsByAssessment(grouped);
+        setLoading(false);
+    }, [groupId, supabase]);
+
+    useEffect(() => {
+        void loadAssessments();
+    }, [loadAssessments]);
+
+    const totalGradedEntries = useMemo(
+        () =>
+            Object.values(statsByAssessment).reduce(
+                (sum, item) => sum + item.gradedCount,
+                0,
+            ),
+        [statsByAssessment],
+    );
+
+    const handleCreateAssessment = async (event: React.FormEvent) => {
+        event.preventDefault();
+        setCreating(true);
+
+        const parsedMaxScore = Number(maxScore);
+        if (!title.trim() || !Number.isFinite(parsedMaxScore)) {
+            setCreating(false);
+            return;
+        }
+
+        const { error } = await supabase
+            .from("coursework_assessments")
+            .insert({
+                group_id: groupId,
+                session_id: sessionId === "none" ? null : sessionId,
+                title: title.trim(),
+                assessment_kind: kind,
+                max_score: parsedMaxScore,
+                category: category === "none" ? null : category,
+            });
+
+        setCreating(false);
+
+        if (error) {
+            await showAlert({
+                title: "Failed To Create Coursework Item",
+                description: error.message,
+                variant: "error",
+            });
+            return;
+        }
+
+        setTitle("");
+        setKind("quiz");
+        setMaxScore("10");
+        setCategory("none");
+        setSessionId("none");
+        setCreateOpen(false);
+        await loadAssessments();
+    };
+
+    const handleDeleteAssessment = async (
+        assessment: CourseworkAssessment,
+        event: React.MouseEvent,
+    ) => {
+        event.stopPropagation();
+        const confirmed = await showConfirm({
+            title: "Delete Assessment",
+            description: `Delete "${assessment.title}" and all of its grades?`,
+            confirmLabel: "Delete Assessment",
+            variant: "error",
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        const { error } = await supabase
+            .from("coursework_assessments")
+            .delete()
+            .eq("id", assessment.id);
+
+        if (error) {
+            await showAlert({
+                title: "Failed To Delete Assessment",
+                description: error.message,
+                variant: "error",
+            });
+            return;
+        }
+
+        await loadAssessments();
+    };
+
+    const handleDownloadCourseworkExcel = async (
+        includeAttendance: boolean,
+    ) => {
+        if (!students.length || (!assessments.length && !includeAttendance)) {
+            await showAlert({
+                title: "Nothing To Export",
+                description:
+                    includeAttendance
+                        ? "Add students before exporting the coursework sheet."
+                        : "Add coursework items and students before exporting the coursework sheet.",
+                variant: "warning",
+            });
+            return;
+        }
+
+        setDownloading(true);
+
+        let gradeRows:
+            | {
+                  assessment_id: string;
+                  student_id: string;
+                  score: number;
+              }[]
+            | null = [];
+
+        if (assessments.length) {
+            const { data, error } = await supabase
+                .from("coursework_grades")
+                .select("assessment_id, student_id, score")
+                .in(
+                    "assessment_id",
+                    assessments.map((assessment) => assessment.id),
+                );
+
+            if (error) {
+                await showAlert({
+                    title: "Failed To Export Coursework",
+                    description: error.message,
+                    variant: "error",
+                });
+                setDownloading(false);
+                return;
+            }
+
+            gradeRows = data;
+        }
+
+        let attendanceByUniversityId = new Map<string, number>();
+        let attendanceMaxTotal = 0;
+
+        if (includeAttendance) {
+            const { data: gradingSettingsRow } = await supabase
+                .from("group_grading_settings")
+                .select(
+                    "present_grade, late_grade, excused_grade, absent_grade, late_after_minutes",
+                )
+                .eq("group_id", groupId)
+                .maybeSingle();
+
+            const gradingSettings = normalizeGradingSettings(
+                gradingSettingsRow || defaultGradingSettings,
+            );
+            const orderedSessions = [...sessions].sort(
+                (a, b) =>
+                    new Date(a.started_at).getTime() -
+                    new Date(b.started_at).getTime(),
+            );
+
+            attendanceMaxTotal =
+                orderedSessions.length * Number(gradingSettings.present_grade);
+
+            if (orderedSessions.length) {
+                const { data: attendanceRows, error: attendanceError } =
+                    await supabase
+                        .from("attendance_records")
+                        .select("session_id, university_id, status")
+                        .in(
+                            "session_id",
+                            orderedSessions.map((session) => session.id),
+                        );
+
+                if (attendanceError) {
+                    await showAlert({
+                        title: "Failed To Export Coursework",
+                        description:
+                            "Attendance data could not be loaded for the export.",
+                        variant: "error",
+                    });
+                    setDownloading(false);
+                    return;
+                }
+
+                const statusBySessionStudent = new Map(
+                    (attendanceRows || []).map((row) => [
+                        `${row.session_id}:${row.university_id}`,
+                        row.status as AttendanceStatus,
+                    ]),
+                );
+
+                attendanceByUniversityId = new Map(
+                    students.map((student) => {
+                        const total = orderedSessions.reduce(
+                            (sum, session) =>
+                                sum +
+                                getGradeValue(
+                                    statusBySessionStudent.get(
+                                        `${session.id}:${student.university_id}`,
+                                    ),
+                                    gradingSettings,
+                                ),
+                            0,
+                        );
+
+                        return [student.university_id, total];
+                    }),
+                );
+            }
+        }
+
+        const ExcelJS = (await import("exceljs")).default;
+        const { saveAs } = (await import("file-saver")).default;
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Coursework");
+        const orderedAssessments = [...assessments].sort(
+            (a, b) =>
+                new Date(a.assessment_date).getTime() -
+                new Date(b.assessment_date).getTime(),
+        );
+
+        worksheet.columns = [
+            { header: "Name", key: "name", width: 32 },
+            { header: "University ID", key: "university_id", width: 18 },
+            ...orderedAssessments.map((assessment) => ({
+                header: `${assessment.title}\n${formatCourseworkKind(
+                    assessment.assessment_kind,
+                )}\n${formatCourseworkScore(assessment.max_score)}`,
+                key: assessment.id,
+                width: 18,
+            })),
+            ...(includeAttendance
+                ? [
+                      {
+                          header: `Attendance\nCumulative\n${formatGrade(attendanceMaxTotal)}`,
+                          key: "attendance_total",
+                          width: 18,
+                      },
+                  ]
+                : []),
+            { header: "Total", key: "total", width: 14 },
+            { header: "Max Total", key: "max_total", width: 14 },
+            { header: "Percentage", key: "percentage", width: 14 },
+        ];
+
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).alignment = {
+            vertical: "middle",
+            horizontal: "center",
+            wrapText: true,
+        };
+        worksheet.getRow(1).fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFEFF6FF" },
+        };
+
+        const gradesByKey = new Map(
+            (gradeRows || []).map((row) => [
+                `${row.student_id}:${row.assessment_id}`,
+                row.score as number,
+            ]),
+        );
+        const courseworkMaxTotal = orderedAssessments.reduce(
+            (sum, assessment) => sum + Number(assessment.max_score),
+            0,
+        );
+        const maxTotal = courseworkMaxTotal + attendanceMaxTotal;
+
+        students.forEach((student) => {
+            const rowData: Record<string, string | number> = {
+                name: student.name,
+                university_id: student.university_id,
+            };
+
+            let total = 0;
+            orderedAssessments.forEach((assessment) => {
+                const score =
+                    gradesByKey.get(`${student.id}:${assessment.id}`) ?? "";
+                rowData[assessment.id] = score;
+                if (typeof score === "number") {
+                    total += score;
+                }
+            });
+
+            if (includeAttendance) {
+                const attendanceTotal =
+                    attendanceByUniversityId.get(student.university_id) ?? 0;
+                rowData.attendance_total = formatGrade(attendanceTotal);
+                total += attendanceTotal;
+            }
+
+            rowData.total = total;
+            rowData.max_total = maxTotal;
+            rowData.percentage =
+                maxTotal > 0 ? `${formatCourseworkScore((total / maxTotal) * 100)}%` : "0%";
+
+            worksheet.addRow(rowData);
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+
+        saveAs(
+            blob,
+            `coursework_${new Date().toISOString().split("T")[0]}.xlsx`,
+        );
+        setDownloading(false);
+        setDownloadOpen(false);
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="text-sm text-gray-500">
+                        Coursework Items
+                    </div>
+                    <div className="mt-1 text-2xl font-bold text-gray-900">
+                        {assessments.length}
+                    </div>
+                </div>
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="text-sm text-gray-500">Graded Entries</div>
+                    <div className="mt-1 text-2xl font-bold text-gray-900">
+                        {totalGradedEntries}
+                    </div>
+                </div>
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="text-sm text-gray-500">Students</div>
+                    <div className="mt-1 text-2xl font-bold text-gray-900">
+                        {students.length}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-start justify-between gap-4 rounded-lg border bg-white p-4">
+                <div>
+                    <h3 className="font-semibold text-gray-900">
+                        LMS Coursework
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                        Add quizzes, assignments, midterms, final exams, and
+                        session-linked grade items separately from attendance.
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline">
+                                <Download className="mr-2 h-4 w-4" />
+                                Download Coursework
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Export Coursework</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-3 py-4">
+                                <p className="text-sm text-gray-600">
+                                    Do you want to include cumulative attendance
+                                    grades in the exported coursework sheet?
+                                </p>
+                                <div className="rounded-lg border bg-gray-50 p-3 text-sm text-gray-600">
+                                    If included, attendance will be added as a
+                                    separate column and counted in the total,
+                                    max total, and percentage.
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setDownloadOpen(false)}
+                                    disabled={downloading}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() =>
+                                        void handleDownloadCourseworkExcel(false)
+                                    }
+                                    disabled={downloading}
+                                >
+                                    {downloading && (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    )}
+                                    Without Attendance
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={() =>
+                                        void handleDownloadCourseworkExcel(true)
+                                    }
+                                    disabled={downloading}
+                                >
+                                    {downloading && (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    )}
+                                    Include Attendance
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog
+                        open={createOpen}
+                        onOpenChange={setCreateOpen}
+                    >
+                        <DialogTrigger asChild>
+                            <Button>
+                                <Plus className="mr-2 h-4 w-4" />
+                                New Assessment
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <form onSubmit={handleCreateAssessment}>
+                                <DialogHeader>
+                                    <DialogTitle>Create Coursework Item</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="courseworkTitle">Title</Label>
+                                        <Input
+                                            id="courseworkTitle"
+                                            value={title}
+                                            onChange={(event) =>
+                                                setTitle(event.target.value)
+                                            }
+                                            placeholder="Quiz 1, Midterm, Final Exam"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>Type</Label>
+                                            <Select
+                                                value={kind}
+                                                onValueChange={(value) =>
+                                                    setKind(
+                                                        value as CourseworkAssessmentKind,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {courseworkKindOptions.map(
+                                                        (option) => (
+                                                            <SelectItem
+                                                                key={option.value}
+                                                                value={option.value}
+                                                            >
+                                                                {option.label}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="maxScore">Max Score</Label>
+                                            <Input
+                                                id="maxScore"
+                                                value={maxScore}
+                                                onChange={(event) =>
+                                                    setMaxScore(event.target.value)
+                                                }
+                                                inputMode="decimal"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>Track</Label>
+                                            <Select
+                                                value={category}
+                                                onValueChange={(value) =>
+                                                    setCategory(
+                                                        value as
+                                                            | SessionCategory
+                                                            | "none",
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">
+                                                        General
+                                                    </SelectItem>
+                                                    <SelectItem value="lecture">
+                                                        Lecture
+                                                    </SelectItem>
+                                                    <SelectItem value="tutorial">
+                                                        Tutorial
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Linked Session</Label>
+                                            <Select
+                                                value={sessionId}
+                                                onValueChange={setSessionId}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">
+                                                        Not linked to a session
+                                                    </SelectItem>
+                                                    {sessions.map((session) => (
+                                                        <SelectItem
+                                                            key={session.id}
+                                                            value={session.id}
+                                                        >
+                                                            {(session.title ||
+                                                                "Untitled Session") +
+                                                                " · " +
+                                                                new Date(
+                                                                    session.started_at,
+                                                                ).toLocaleDateString(
+                                                                    "en-US",
+                                                                )}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setCreateOpen(false)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="submit"
+                                        disabled={creating}
+                                    >
+                                        {creating && (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        )}
+                                        Create
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border bg-white">
+                {loading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                    </div>
+                ) : assessments.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                        <FileSpreadsheet className="h-10 w-10 text-gray-300" />
+                        <div>
+                            <p className="font-medium text-gray-900">
+                                No coursework yet
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                Create the first quiz, assignment, midterm, or
+                                final exam for this group.
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Assessment</TableHead>
+                                <TableHead>Type</TableHead>
+                                <TableHead>Track</TableHead>
+                                <TableHead>Linked To</TableHead>
+                                <TableHead>Max</TableHead>
+                                <TableHead>Graded</TableHead>
+                                <TableHead>Average</TableHead>
+                                <TableHead className="w-40"></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {assessments.map((assessment) => {
+                                const stats = statsByAssessment[assessment.id] || {
+                                    gradedCount: 0,
+                                    averageScore: 0,
+                                };
+
+                                return (
+                                    <TableRow key={assessment.id}>
+                                        <TableCell>
+                                            <div className="font-medium text-gray-900">
+                                                {assessment.title}
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                                {new Date(
+                                                    assessment.assessment_date,
+                                                ).toLocaleDateString("en-US")}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge
+                                                variant="outline"
+                                                className={getCourseworkKindBadgeClass(
+                                                    assessment.assessment_kind,
+                                                )}
+                                            >
+                                                {formatCourseworkKind(
+                                                    assessment.assessment_kind,
+                                                )}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            {assessment.category ? (
+                                                <Badge variant="outline">
+                                                    {assessment.category ===
+                                                    "lecture"
+                                                        ? "Lecture"
+                                                        : "Tutorial"}
+                                                </Badge>
+                                            ) : (
+                                                "General"
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-gray-500">
+                                            {assessment.session
+                                                ? assessment.session.title ||
+                                                  "Untitled Session"
+                                                : "Standalone"}
+                                        </TableCell>
+                                        <TableCell className="font-medium">
+                                            {formatCourseworkScore(
+                                                assessment.max_score,
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {stats.gradedCount}/{students.length}
+                                        </TableCell>
+                                        <TableCell>
+                                            {stats.gradedCount > 0
+                                                ? formatCourseworkScore(
+                                                      stats.averageScore,
+                                                  )
+                                                : "—"}
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setSelectedAssessment(
+                                                            assessment,
+                                                        );
+                                                        setManageOpen(true);
+                                                    }}
+                                                >
+                                                    Manage
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-gray-400 hover:text-red-600"
+                                                    onClick={(event) =>
+                                                        handleDeleteAssessment(
+                                                            assessment,
+                                                            event,
+                                                        )
+                                                    }
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
+                )}
+            </div>
+
+            <AssessmentGradesDialog
+                assessment={selectedAssessment}
+                students={students}
+                open={manageOpen}
+                onOpenChange={setManageOpen}
+                onSaved={loadAssessments}
+            />
+        </div>
+    );
+}

@@ -8,9 +8,24 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
     {
+        version: "v0.7.0",
+        date: "March 26, 2026",
+        tag: "Latest",
+        title: "LMS Coursework, Imports, And Search",
+        notes: [
+            "Groups now support a separate LMS-style coursework area for quizzes, assignments, worksheets, midterms, practicals, participation, and final exams.",
+            "Coursework can be managed independently from attendance, with per-assessment grade entry, editing, and spreadsheet import.",
+            "Doctors and TAs can now upload Excel or CSV files for students, coursework grades, and past attendance imports.",
+            "Historical attendance import now supports one uploaded file with multiple session mappings, each with its own title, date, type, and spreadsheet column.",
+            "The dashboard now includes student search inside groups plus a site-wide search across groups, students, sessions, and coursework.",
+            "System popups were replaced with in-app dialogs so alerts and confirmations match the rest of the UI.",
+            "Coursework can now be exported to Excel, with an option to include cumulative attendance grades in the final sheet.",
+        ],
+    },
+    {
         version: "v0.6.0",
         date: "March 25, 2026",
-        tag: "Latest",
+        tag: "Grading",
         title: "Editable Grading Policies",
         notes: [
             "Each group can now define its own grading values for present, late, excused, and absent attendance.",

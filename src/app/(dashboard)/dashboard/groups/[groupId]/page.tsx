@@ -56,7 +56,9 @@ import {
     MapPin,
     RefreshCw,
 } from "lucide-react";
-import Papa from "papaparse";
+import { CourseworkGroupPanel } from "@/components/CourseworkGroupPanel";
+import { readSpreadsheetFile } from "@/lib/spreadsheet";
+import { useAppDialog } from "@/components/AppDialogProvider";
 
 interface Group {
     id: string;
@@ -91,6 +93,54 @@ interface Session {
     radius_meters: number | null;
 }
 
+interface CsvColumnOption {
+    value: string;
+    label: string;
+    index: number;
+}
+
+interface AttendanceImportSessionDraft {
+    id: string;
+    title: string;
+    category: "lecture" | "tutorial";
+    sessionDate: string;
+    column: string;
+}
+
+type ImportedAttendanceStatus = "present" | "late" | "excused";
+
+function normalizeImportedAttendanceStatus(
+    value: string | undefined,
+): ImportedAttendanceStatus | null {
+    const normalized = value?.trim().toLowerCase();
+
+    if (!normalized) {
+        return null;
+    }
+
+    if (
+        ["present", "p", "attended", "yes", "y", "1", "true"].includes(
+            normalized,
+        )
+    ) {
+        return "present";
+    }
+
+    if (["late", "l"].includes(normalized)) {
+        return "late";
+    }
+
+    if (["excused", "excuse", "e"].includes(normalized)) {
+        return "excused";
+    }
+
+    if (["absent", "a", "0", "false", "no", "n"].includes(normalized)) {
+        return null;
+    }
+
+    return null;
+}
+
 const sessionCategoryCopy = {
     lecture: {
         label: "Lecture",
@@ -107,6 +157,7 @@ export default function GroupDetailPage() {
     const router = useRouter();
     const groupId = params.groupId as string;
     const supabase = createClient();
+    const { showAlert, showConfirm } = useAppDialog();
 
     const [group, setGroup] = useState<Group | null>(null);
     const [students, setStudents] = useState<Student[]>([]);
@@ -116,6 +167,7 @@ export default function GroupDetailPage() {
     const [team, setTeam] = useState<TeamMember[]>([]);
     const [gradingSettings, setGradingSettings] =
         useState<GradingSettings>(defaultGradingSettings);
+    const [studentSearch, setStudentSearch] = useState("");
 
     // Rename group
     const [renameOpen, setRenameOpen] = useState(false);
@@ -152,6 +204,36 @@ export default function GroupDetailPage() {
         success: number;
         skipped: number;
     } | null>(null);
+    const [attendanceImportOpen, setAttendanceImportOpen] = useState(false);
+    const [attendanceHeaders, setAttendanceHeaders] = useState<string[]>([]);
+    const [attendanceRows, setAttendanceRows] = useState<string[][]>([]);
+    const [attendanceIdColumn, setAttendanceIdColumn] = useState("");
+    const [attendanceImportSessions, setAttendanceImportSessions] = useState<
+        AttendanceImportSessionDraft[]
+    >([]);
+    const [attendanceImporting, setAttendanceImporting] = useState(false);
+
+    const csvColumnOptions: CsvColumnOption[] = csvHeaders.map((header, index) => ({
+        value: `column_${index}`,
+        label: header || `Column ${index + 1}`,
+        index,
+    }));
+
+    const getColumnIndex = (value: string) =>
+        csvColumnOptions.find((option) => option.value === value)?.index ?? -1;
+    const attendanceColumnOptions: CsvColumnOption[] = attendanceHeaders.map(
+        (header, index) => ({
+            value: `attendance_column_${index}`,
+            label: header || `Column ${index + 1}`,
+            index,
+        }),
+    );
+    const getAttendanceColumnIndex = (value: string) =>
+        attendanceColumnOptions.find((option) => option.value === value)
+            ?.index ?? -1;
+    const getAttendanceDefaultSessionColumn = (idColumnValue = attendanceIdColumn) =>
+        attendanceColumnOptions.find((option) => option.value !== idColumnValue)
+            ?.value ?? "";
 
     // Start session dialog
     const [sessionOpen, setSessionOpen] = useState(false);
@@ -301,8 +383,18 @@ export default function GroupDetailPage() {
         });
         if (error) {
             if (error.code === "23505")
-                alert("A student with this ID already exists in this group.");
-            else alert(error.message);
+                await showAlert({
+                    title: "Student Already Exists",
+                    description:
+                        "A student with this ID already exists in this group.",
+                    variant: "warning",
+                });
+            else
+                await showAlert({
+                    title: "Failed To Add Student",
+                    description: error.message,
+                    variant: "error",
+                });
         } else {
             setStudentName("");
             setStudentId("");
@@ -313,7 +405,12 @@ export default function GroupDetailPage() {
     };
 
     const handleDeleteStudent = async (id: string) => {
-        if (!confirm("Remove this student from the group?")) return;
+        const confirmed = await showConfirm({
+            title: "Remove Student",
+            description: "This student will be removed from the group.",
+            confirmLabel: "Remove Student",
+        });
+        if (!confirmed) return;
         await supabase.from("students").delete().eq("id", id);
         fetchStudents();
     };
@@ -347,7 +444,11 @@ export default function GroupDetailPage() {
 
             const data = await res.json();
             if (!res.ok) {
-                alert(data.error || "Failed to add team member.");
+                await showAlert({
+                    title: "Failed To Add Team Member",
+                    description: data.error || "Failed to add team member.",
+                    variant: "error",
+                });
                 return;
             }
 
@@ -361,7 +462,12 @@ export default function GroupDetailPage() {
     };
 
     const handleRemoveMember = async (professorId: string) => {
-        if (!confirm("Remove this member from the group?")) return;
+        const confirmed = await showConfirm({
+            title: "Remove Member",
+            description: "This member will lose access to the group.",
+            confirmLabel: "Remove Member",
+        });
+        if (!confirmed) return;
 
         const res = await fetch(`/api/groups/${groupId}/members`, {
             method: "DELETE",
@@ -371,7 +477,11 @@ export default function GroupDetailPage() {
 
         const data = await res.json();
         if (!res.ok) {
-            alert(data.error || "Failed to remove member.");
+            await showAlert({
+                title: "Failed To Remove Member",
+                description: data.error || "Failed to remove member.",
+                variant: "error",
+            });
             return;
         }
 
@@ -384,39 +494,37 @@ export default function GroupDetailPage() {
         e: React.MouseEvent,
     ) => {
         e.stopPropagation();
-        if (!confirm("Delete this session and all its attendance records?"))
-            return;
+        const confirmed = await showConfirm({
+            title: "Delete Session",
+            description:
+                "This will permanently delete the session and all of its attendance records.",
+            confirmLabel: "Delete Session",
+            variant: "error",
+        });
+        if (!confirmed) return;
         await supabase.from("sessions").delete().eq("id", sessionId);
         fetchSessions();
     };
 
     // CSV handling
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        Papa.parse(file, {
-            complete: (results) => {
-                const data = results.data as string[][];
-                if (data.length > 0) {
-                    setCsvHeaders(data[0]);
-                    setCsvData(
-                        data
-                            .slice(1)
-                            .filter((row) => row.some((cell) => cell?.trim())),
-                    );
-                    setNameColumn("");
-                    setIdColumn("");
-                    setImportResult(null);
-                }
-            },
-        });
+        const data = await readSpreadsheetFile(file);
+        if (data.headers.length > 0) {
+            setCsvHeaders(data.headers);
+            setCsvData(data.rows);
+            setNameColumn("");
+            setIdColumn("");
+            setImportResult(null);
+        }
     };
 
     const handleImportCsv = async () => {
         if (!nameColumn || !idColumn) return;
         setImporting(true);
-        const nameIndex = csvHeaders.indexOf(nameColumn);
-        const idIndex = csvHeaders.indexOf(idColumn);
+        const nameIndex = getColumnIndex(nameColumn);
+        const idIndex = getColumnIndex(idColumn);
         const studentsToInsert = csvData
             .filter((row) => row[nameIndex]?.trim() && row[idIndex]?.trim())
             .map((row) => ({
@@ -445,6 +553,203 @@ export default function GroupDetailPage() {
         setImportResult(null);
     };
 
+    const handleAttendanceFileUpload = async (
+        e: React.ChangeEvent<HTMLInputElement>,
+    ) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const data = await readSpreadsheetFile(file);
+        if (data.headers.length > 0) {
+            const idHeaderIndex = data.headers.findIndex((header) =>
+                /(id|code|الكود)/i.test(header),
+            );
+            const nextIdColumn =
+                idHeaderIndex >= 0 ? `attendance_column_${idHeaderIndex}` : "";
+            const defaultSessionColumn =
+                data.headers.findIndex((_, index) => index !== idHeaderIndex) >= 0
+                    ? `attendance_column_${data.headers.findIndex((_, index) => index !== idHeaderIndex)}`
+                    : "";
+
+            setAttendanceHeaders(data.headers);
+            setAttendanceRows(data.rows);
+            setAttendanceIdColumn(nextIdColumn);
+            setAttendanceImportSessions(
+                defaultSessionColumn
+                    ? [
+                          {
+                              id: crypto.randomUUID(),
+                              title: "",
+                              category: "lecture",
+                              sessionDate: "",
+                              column: defaultSessionColumn,
+                          },
+                      ]
+                    : [],
+            );
+        }
+    };
+
+    const resetAttendanceImport = () => {
+        setAttendanceImportOpen(false);
+        setAttendanceHeaders([]);
+        setAttendanceRows([]);
+        setAttendanceIdColumn("");
+        setAttendanceImportSessions([]);
+        setAttendanceImporting(false);
+    };
+
+    const addAttendanceImportSession = () => {
+        setAttendanceImportSessions((current) => [
+            ...current,
+            {
+                id: crypto.randomUUID(),
+                title: "",
+                category: "lecture",
+                sessionDate: "",
+                column: getAttendanceDefaultSessionColumn(),
+            },
+        ]);
+    };
+
+    const updateAttendanceImportSession = (
+        sessionId: string,
+        updates: Partial<AttendanceImportSessionDraft>,
+    ) => {
+        setAttendanceImportSessions((current) =>
+            current.map((session) =>
+                session.id === sessionId ? { ...session, ...updates } : session,
+            ),
+        );
+    };
+
+    const removeAttendanceImportSession = (sessionId: string) => {
+        setAttendanceImportSessions((current) =>
+            current.filter((session) => session.id !== sessionId),
+        );
+    };
+
+    const handleImportPastAttendance = async () => {
+        if (!attendanceIdColumn || attendanceImportSessions.length === 0) {
+            return;
+        }
+
+        const idIndex = getAttendanceColumnIndex(attendanceIdColumn);
+        if (idIndex < 0) {
+            return;
+        }
+
+        const studentByUniversityId = new Map(
+            students.map((student) => [student.university_id.trim(), student]),
+        );
+
+        const payloadSessions = attendanceImportSessions
+            .map((session) => {
+                const columnIndex = getAttendanceColumnIndex(session.column);
+                if (columnIndex < 0 || !session.sessionDate) {
+                    return null;
+                }
+
+                const entries = attendanceRows
+                    .map((row) => {
+                        const universityId = row[idIndex]?.trim();
+                        const student = universityId
+                            ? studentByUniversityId.get(universityId)
+                            : undefined;
+
+                        if (!student) {
+                            return null;
+                        }
+
+                        const status = normalizeImportedAttendanceStatus(
+                            row[columnIndex],
+                        );
+
+                        if (!status) {
+                            return null;
+                        }
+
+                        return {
+                            studentId: student.id,
+                            status,
+                        };
+                    })
+                    .filter(
+                        (
+                            entry,
+                        ): entry is {
+                            studentId: string;
+                            status: ImportedAttendanceStatus;
+                        } => entry !== null,
+                    );
+
+                if (entries.length === 0) {
+                    return null;
+                }
+
+                return {
+                    title: session.title.trim(),
+                    category: session.category,
+                    sessionDate: session.sessionDate,
+                    entries,
+                };
+            })
+            .filter(
+                (
+                    session,
+                ): session is {
+                    title: string;
+                    category: "lecture" | "tutorial";
+                    sessionDate: string;
+                    entries: {
+                        studentId: string;
+                        status: ImportedAttendanceStatus;
+                    }[];
+                } => session !== null,
+            );
+
+        if (payloadSessions.length === 0) {
+            await showAlert({
+                title: "No Valid Attendance Found",
+                description:
+                    "No valid session mappings with matching students and supported attendance values were found in the uploaded file.",
+                variant: "warning",
+            });
+            return;
+        }
+
+        setAttendanceImporting(true);
+
+        const response = await fetch(`/api/groups/${groupId}/attendance-import`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                sessions: payloadSessions,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            await showAlert({
+                title: "Failed To Import Attendance",
+                description: data.error || "Failed to import attendance.",
+                variant: "error",
+            });
+            setAttendanceImporting(false);
+            return;
+        }
+
+        await showAlert({
+            title: "Attendance Imported",
+            description: `${data.importedCount} attendance records were imported across ${data.sessionCount} historical sessions.`,
+        });
+
+        setAttendanceImporting(false);
+        resetAttendanceImport();
+        await fetchSessions();
+    };
+
     // Location
     const handleGetLocation = () => {
         setGettingLocation(true);
@@ -455,9 +760,12 @@ export default function GroupDetailPage() {
                 setGettingLocation(false);
             },
             () => {
-                alert(
-                    "Could not get your location. Please enable location access.",
-                );
+                void showAlert({
+                    title: "Location Unavailable",
+                    description:
+                        "Could not get your location. Please enable location access.",
+                    variant: "warning",
+                });
                 setGettingLocation(false);
             },
             { enableHighAccuracy: true },
@@ -521,7 +829,11 @@ export default function GroupDetailPage() {
             );
 
         if (error) {
-            alert("Failed to load cumulative attendance.");
+            await showAlert({
+                title: "Failed To Export Attendance",
+                description: "Failed to load cumulative attendance.",
+                variant: "error",
+            });
             return;
         }
 
@@ -765,6 +1077,15 @@ export default function GroupDetailPage() {
         team.find((member) => member.professor_id === currentUserId)?.role ||
         (group.professor_id === currentUserId ? "owner" : "ta");
     const isOwner = currentRole === "owner";
+    const filteredStudents = students.filter((student) => {
+        const query = studentSearch.trim().toLowerCase();
+        if (!query) return true;
+
+        return (
+            student.name.toLowerCase().includes(query) ||
+            student.university_id.toLowerCase().includes(query)
+        );
+    });
 
     return (
         <div>
@@ -863,6 +1184,7 @@ export default function GroupDetailPage() {
             >
                 <TabsList>
                     <TabsTrigger value="sessions">Sessions</TabsTrigger>
+                    <TabsTrigger value="coursework">Coursework</TabsTrigger>
                     <TabsTrigger value="students">Students</TabsTrigger>
                     <TabsTrigger value="team">Team</TabsTrigger>
                 </TabsList>
@@ -873,6 +1195,394 @@ export default function GroupDetailPage() {
                     className="space-y-4"
                 >
                     <div className="flex justify-end gap-2">
+                        <Dialog
+                            open={attendanceImportOpen}
+                            onOpenChange={(open) => {
+                                if (!open) resetAttendanceImport();
+                                else setAttendanceImportOpen(true);
+                            }}
+                        >
+                            <DialogTrigger asChild>
+                                <Button variant="outline">
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Import Past Attendance
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>
+                                        Import Historical Attendance
+                                    </DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="attendanceImportFile">
+                                                Excel Or CSV File
+                                            </Label>
+                                            <Input
+                                                id="attendanceImportFile"
+                                                type="file"
+                                                accept=".csv,.xlsx"
+                                                onChange={
+                                                    handleAttendanceFileUpload
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Student ID Column</Label>
+                                            <Select
+                                                value={attendanceIdColumn}
+                                                onValueChange={
+                                                    setAttendanceIdColumn
+                                                }
+                                                disabled={
+                                                    attendanceHeaders.length === 0
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select column..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {attendanceColumnOptions.map(
+                                                        (option) => (
+                                                            <SelectItem
+                                                                key={
+                                                                    option.value
+                                                                }
+                                                                value={
+                                                                    option.value
+                                                                }
+                                                            >
+                                                                {option.label}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {attendanceHeaders.length > 0 && (
+                                        <>
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <Label className="block">
+                                                        Session List
+                                                    </Label>
+                                                    <p className="text-sm text-gray-500">
+                                                        Add one item for each
+                                                        attendance column in the
+                                                        uploaded file.
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={
+                                                        addAttendanceImportSession
+                                                    }
+                                                    disabled={
+                                                        !attendanceIdColumn ||
+                                                        attendanceColumnOptions.filter(
+                                                            (option) =>
+                                                                option.value !==
+                                                                attendanceIdColumn,
+                                                        ).length === 0
+                                                    }
+                                                >
+                                                    <Plus className="mr-2 h-4 w-4" />
+                                                    Add Session
+                                                </Button>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                {attendanceImportSessions.map(
+                                                    (session, index) => (
+                                                        <div
+                                                            key={session.id}
+                                                            className="space-y-4 rounded-lg border p-4"
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <h4 className="font-medium">
+                                                                    Session{' '}
+                                                                    {index + 1}
+                                                                </h4>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() =>
+                                                                        removeAttendanceImportSession(
+                                                                            session.id,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        attendanceImportSessions.length <=
+                                                                        1
+                                                                    }
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                            <div className="grid gap-4 md:grid-cols-2">
+                                                                <div className="space-y-2">
+                                                                    <Label>
+                                                                        Session
+                                                                        Name
+                                                                    </Label>
+                                                                    <Input
+                                                                        value={
+                                                                            session.title
+                                                                        }
+                                                                        onChange={(
+                                                                            e,
+                                                                        ) =>
+                                                                            updateAttendanceImportSession(
+                                                                                session.id,
+                                                                                {
+                                                                                    title: e
+                                                                                        .target
+                                                                                        .value,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                        placeholder="Lecture 3 or Section 2"
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    <Label>
+                                                                        Session
+                                                                        Date
+                                                                    </Label>
+                                                                    <Input
+                                                                        type="datetime-local"
+                                                                        value={
+                                                                            session.sessionDate
+                                                                        }
+                                                                        onChange={(
+                                                                            e,
+                                                                        ) =>
+                                                                            updateAttendanceImportSession(
+                                                                                session.id,
+                                                                                {
+                                                                                    sessionDate:
+                                                                                        e
+                                                                                            .target
+                                                                                            .value,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div className="grid gap-4 md:grid-cols-2">
+                                                                <div className="space-y-2">
+                                                                    <Label>
+                                                                        Session
+                                                                        Column
+                                                                    </Label>
+                                                                    <Select
+                                                                        value={
+                                                                            session.column
+                                                                        }
+                                                                        onValueChange={(
+                                                                            value,
+                                                                        ) =>
+                                                                            updateAttendanceImportSession(
+                                                                                session.id,
+                                                                                {
+                                                                                    column: value,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <SelectTrigger>
+                                                                            <SelectValue placeholder="Select column..." />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            {attendanceColumnOptions
+                                                                                .filter(
+                                                                                    (
+                                                                                        option,
+                                                                                    ) =>
+                                                                                        option.value !==
+                                                                                        attendanceIdColumn,
+                                                                                )
+                                                                                .map(
+                                                                                    (
+                                                                                        option,
+                                                                                    ) => (
+                                                                                        <SelectItem
+                                                                                            key={`${session.id}-${option.value}`}
+                                                                                            value={
+                                                                                                option.value
+                                                                                            }
+                                                                                        >
+                                                                                            {
+                                                                                                option.label
+                                                                                            }
+                                                                                        </SelectItem>
+                                                                                    ),
+                                                                                )}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    <Label>
+                                                                        Session
+                                                                        Type
+                                                                    </Label>
+                                                                    <Select
+                                                                        value={
+                                                                            session.category
+                                                                        }
+                                                                        onValueChange={(
+                                                                            value,
+                                                                        ) =>
+                                                                            updateAttendanceImportSession(
+                                                                                session.id,
+                                                                                {
+                                                                                    category:
+                                                                                        value as
+                                                                                            | 'lecture'
+                                                                                            | 'tutorial',
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <SelectTrigger>
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="lecture">
+                                                                                Lecture
+                                                                            </SelectItem>
+                                                                            <SelectItem value="tutorial">
+                                                                                Tutorial
+                                                                            </SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ),
+                                                )}
+                                            </div>
+
+                                            <div>
+                                                <Label className="mb-2 block">
+                                                    Preview (first 5 rows)
+                                                </Label>
+                                                <div className="border rounded-lg overflow-hidden">
+                                                    <Table>
+                                                        <TableHeader>
+                                                            <TableRow>
+                                                                <TableHead>
+                                                                    Student ID
+                                                                </TableHead>
+                                                                {attendanceImportSessions.map(
+                                                                    (
+                                                                        session,
+                                                                        index,
+                                                                    ) => (
+                                                                        <TableHead
+                                                                            key={
+                                                                                session.id
+                                                                            }
+                                                                        >
+                                                                            {session.title.trim() ||
+                                                                                `Session ${index + 1}`}
+                                                                        </TableHead>
+                                                                    ),
+                                                                )}
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {attendanceRows
+                                                                .slice(0, 5)
+                                                                .map(
+                                                                    (
+                                                                        row,
+                                                                        index,
+                                                                    ) => (
+                                                                        <TableRow
+                                                                            key={
+                                                                                index
+                                                                            }
+                                                                        >
+                                                                            <TableCell>
+                                                                                {attendanceIdColumn
+                                                                                    ? row[
+                                                                                          getAttendanceColumnIndex(
+                                                                                              attendanceIdColumn,
+                                                                                          )
+                                                                                      ]
+                                                                                    : '—'}
+                                                                            </TableCell>
+                                                                            {attendanceImportSessions.map(
+                                                                                (
+                                                                                    session,
+                                                                                ) => (
+                                                                                    <TableCell
+                                                                                        key={`${session.id}-${index}`}
+                                                                                    >
+                                                                                        {session.column
+                                                                                            ? row[
+                                                                                                  getAttendanceColumnIndex(
+                                                                                                      session.column,
+                                                                                                  )
+                                                                                              ] ||
+                                                                                              '—'
+                                                                                            : '—'}
+                                                                                    </TableCell>
+                                                                                ),
+                                                                            )}
+                                                                        </TableRow>
+                                                                    ),
+                                                                )}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
+                                                <p className="mt-2 text-sm text-gray-500">
+                                                    Each selected session column
+                                                    should contain values such as
+                                                    present, late, excused, 1,
+                                                    yes, or true. Unknown
+                                                    students and unsupported
+                                                    values will be skipped.
+                                                </p>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                <DialogFooter>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={resetAttendanceImport}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        onClick={handleImportPastAttendance}
+                                        disabled={
+                                            attendanceImporting ||
+                                            !attendanceIdColumn ||
+                                            attendanceImportSessions.length ===
+                                                0 ||
+                                            attendanceRows.length === 0
+                                        }
+                                    >
+                                        {attendanceImporting && (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        )}
+                                        Import Attendance
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                         <Dialog
                             open={exportOpen}
                             onOpenChange={setExportOpen}
@@ -1390,10 +2100,31 @@ export default function GroupDetailPage() {
 
                 {/* Students Tab */}
                 <TabsContent
+                    value="coursework"
+                    className="space-y-4"
+                >
+                    <CourseworkGroupPanel
+                        groupId={groupId}
+                        students={students}
+                        sessions={sessions}
+                    />
+                </TabsContent>
+
+                <TabsContent
                     value="students"
                     className="space-y-4"
                 >
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="w-full sm:max-w-sm">
+                            <Input
+                                value={studentSearch}
+                                onChange={(e) =>
+                                    setStudentSearch(e.target.value)
+                                }
+                                placeholder="Search students by name or ID"
+                            />
+                        </div>
+                        <div className="flex justify-end gap-2">
                         {/* CSV Upload */}
                         <Dialog
                             open={csvOpen}
@@ -1411,18 +2142,18 @@ export default function GroupDetailPage() {
                             <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                                 <DialogHeader>
                                     <DialogTitle>
-                                        Import Students from CSV
+                                        Import Students From Excel Or CSV
                                     </DialogTitle>
                                 </DialogHeader>
                                 <div className="space-y-4 py-4">
                                     <div>
                                         <Label htmlFor="csvFile">
-                                            Upload CSV File
+                                            Upload Excel Or CSV File
                                         </Label>
                                         <Input
                                             id="csvFile"
                                             type="file"
-                                            accept=".csv"
+                                            accept=".csv,.xlsx"
                                             onChange={handleFileUpload}
                                             className="mt-2"
                                         />
@@ -1444,15 +2175,13 @@ export default function GroupDetailPage() {
                                                             <SelectValue placeholder="Select column..." />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {csvHeaders.map(
-                                                                (h) => (
+                                                            {csvColumnOptions.map(
+                                                                (option) => (
                                                                     <SelectItem
-                                                                        key={h}
-                                                                        value={
-                                                                            h
-                                                                        }
+                                                                        key={option.value}
+                                                                        value={option.value}
                                                                     >
-                                                                        {h}
+                                                                        {option.label}
                                                                     </SelectItem>
                                                                 ),
                                                             )}
@@ -1473,15 +2202,13 @@ export default function GroupDetailPage() {
                                                             <SelectValue placeholder="Select column..." />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {csvHeaders.map(
-                                                                (h) => (
+                                                            {csvColumnOptions.map(
+                                                                (option) => (
                                                                     <SelectItem
-                                                                        key={h}
-                                                                        value={
-                                                                            h
-                                                                        }
+                                                                        key={option.value}
+                                                                        value={option.value}
                                                                     >
-                                                                        {h}
+                                                                        {option.label}
                                                                     </SelectItem>
                                                                 ),
                                                             )}
@@ -1523,7 +2250,7 @@ export default function GroupDetailPage() {
                                                                                 <TableCell>
                                                                                     {
                                                                                         row[
-                                                                                            csvHeaders.indexOf(
+                                                                                            getColumnIndex(
                                                                                                 nameColumn,
                                                                                             )
                                                                                         ]
@@ -1532,7 +2259,7 @@ export default function GroupDetailPage() {
                                                                                 <TableCell>
                                                                                     {
                                                                                         row[
-                                                                                            csvHeaders.indexOf(
+                                                                                            getColumnIndex(
                                                                                                 idColumn,
                                                                                             )
                                                                                         ]
@@ -1740,6 +2467,7 @@ export default function GroupDetailPage() {
                                 </form>
                             </DialogContent>
                         </Dialog>
+                        </div>
                     </div>
 
                     {students.length === 0 ? (
@@ -1749,6 +2477,15 @@ export default function GroupDetailPage() {
                                 <p className="text-gray-500">
                                     No students yet. Add students manually or
                                     import from CSV.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    ) : filteredStudents.length === 0 ? (
+                        <Card className="border-dashed">
+                            <CardContent className="flex flex-col items-center justify-center py-12">
+                                <Users className="h-12 w-12 text-gray-300 mb-3" />
+                                <p className="text-gray-500">
+                                    No students match your search.
                                 </p>
                             </CardContent>
                         </Card>
@@ -1766,7 +2503,7 @@ export default function GroupDetailPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {students.map((student) => (
+                                    {filteredStudents.map((student) => (
                                         <TableRow key={student.id}>
                                             <TableCell className="font-medium">
                                                 {student.name}
@@ -1996,3 +2733,5 @@ export default function GroupDetailPage() {
         </div>
     );
 }
+
+

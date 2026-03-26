@@ -32,6 +32,13 @@ import {
     ShieldAlert,
     XCircle,
 } from "lucide-react";
+import {
+    formatCourseworkKind,
+    formatCourseworkScore,
+    getCourseworkKindBadgeClass,
+    type CourseworkAssessmentKind,
+    type SessionCategory,
+} from "@/lib/coursework";
 
 interface Student {
     id: string;
@@ -74,6 +81,25 @@ interface Violation {
     created_at: string;
 }
 
+interface CourseworkAssessmentSummary {
+    id: string;
+    title: string;
+    assessment_kind: CourseworkAssessmentKind;
+    max_score: number;
+    category: SessionCategory | null;
+    assessment_date: string;
+}
+
+interface CourseworkGradeRow {
+    score: number;
+    assessment: CourseworkAssessmentSummary | null;
+}
+
+interface RawCourseworkGradeRow {
+    score: number;
+    assessment: CourseworkAssessmentSummary | CourseworkAssessmentSummary[] | null;
+}
+
 export default function StudentHistoryPage() {
     const params = useParams();
     const router = useRouter();
@@ -85,6 +111,9 @@ export default function StudentHistoryPage() {
     const [sessions, setSessions] = useState<Session[]>([]);
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
+    const [courseworkGrades, setCourseworkGrades] = useState<CourseworkGradeRow[]>(
+        [],
+    );
     const [gradingSettings, setGradingSettings] =
         useState<GradingSettings>(defaultGradingSettings);
     const [loading, setLoading] = useState(true);
@@ -107,6 +136,7 @@ export default function StudentHistoryPage() {
             { data: sessionsData },
             { data: attendanceData },
             { data: gradingSettingsData },
+            { data: courseworkData },
         ] =
             await Promise.all([
                 supabase
@@ -127,6 +157,12 @@ export default function StudentHistoryPage() {
                     )
                     .eq("group_id", groupId)
                     .maybeSingle(),
+                supabase
+                    .from("coursework_grades")
+                    .select(
+                        "score, assessment:coursework_assessments(id, title, assessment_kind, max_score, category, assessment_date)",
+                    )
+                    .eq("student_id", studentId),
             ]);
 
         const sessionIds = (sessionsData || []).map((session) => session.id);
@@ -145,6 +181,16 @@ export default function StudentHistoryPage() {
         setAttendance(attendanceData || []);
         setGradingSettings(normalizeGradingSettings(gradingSettingsData));
         setViolations(violationsData || []);
+        setCourseworkGrades(
+            ((courseworkData || []) as RawCourseworkGradeRow[])
+                .map((row) => ({
+                    ...row,
+                    assessment: Array.isArray(row.assessment)
+                        ? (row.assessment[0] ?? null)
+                        : row.assessment,
+                }))
+                .filter((row) => row.assessment),
+        );
         setLoading(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupId, studentId]);
@@ -220,6 +266,14 @@ export default function StudentHistoryPage() {
         );
     }, 0);
     const overallGradeAverage = getAverageGrade(overallGradeTotal, totalSessions);
+    const courseworkTotal = courseworkGrades.reduce(
+        (sum, row) => sum + row.score,
+        0,
+    );
+    const courseworkMaxTotal = courseworkGrades.reduce(
+        (sum, row) => sum + (row.assessment?.max_score || 0),
+        0,
+    );
     const lectureGradeAverage = getAverageGrade(
         lectureGradeTotal,
         lectureSessions.length,
@@ -358,6 +412,18 @@ export default function StudentHistoryPage() {
                         {violations.length}
                     </p>
                 </div>
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Coursework
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                        {formatCourseworkScore(courseworkTotal)}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                        / {formatCourseworkScore(courseworkMaxTotal)}
+                    </p>
+                </div>
             </div>
 
             <div className="rounded-lg border bg-white p-4">
@@ -488,6 +554,76 @@ export default function StudentHistoryPage() {
                                 </TableRow>
                             );
                         })}
+                    </TableBody>
+                </Table>
+            </div>
+
+            <div className="border rounded-lg overflow-hidden bg-white">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Coursework</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Track</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Score</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {courseworkGrades.length === 0 ? (
+                            <TableRow>
+                                <TableCell
+                                    colSpan={5}
+                                    className="py-8 text-center text-gray-500"
+                                >
+                                    No coursework grades yet.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            courseworkGrades.map((row, index) => (
+                                <TableRow key={`${row.assessment?.id}-${index}`}>
+                                    <TableCell className="font-medium">
+                                        {row.assessment?.title}
+                                    </TableCell>
+                                    <TableCell>
+                                        {row.assessment && (
+                                            <Badge
+                                                variant="outline"
+                                                className={getCourseworkKindBadgeClass(
+                                                    row.assessment
+                                                        .assessment_kind,
+                                                )}
+                                            >
+                                                {formatCourseworkKind(
+                                                    row.assessment
+                                                        .assessment_kind,
+                                                )}
+                                            </Badge>
+                                        )}
+                                    </TableCell>
+                                    <TableCell>
+                                        {row.assessment?.category
+                                            ? row.assessment.category ===
+                                              "lecture"
+                                                ? "Lecture"
+                                                : "Tutorial"
+                                            : "General"}
+                                    </TableCell>
+                                    <TableCell className="text-sm text-gray-500">
+                                        {row.assessment
+                                            ? new Date(
+                                                  row.assessment.assessment_date,
+                                              ).toLocaleDateString("en-US")
+                                            : "—"}
+                                    </TableCell>
+                                    <TableCell className="font-medium text-gray-700">
+                                        {formatCourseworkScore(row.score)}
+                                        {row.assessment &&
+                                            ` / ${formatCourseworkScore(row.assessment.max_score)}`}
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
                     </TableBody>
                 </Table>
             </div>

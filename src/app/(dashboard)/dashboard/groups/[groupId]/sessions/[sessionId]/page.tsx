@@ -46,6 +46,8 @@ import {
     FilePenLine,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { SessionCourseworkPanel } from "@/components/SessionCourseworkPanel";
+import { useAppDialog } from "@/components/AppDialogProvider";
 
 interface SessionDetail {
     id: string;
@@ -124,6 +126,7 @@ export default function SessionDetailPage() {
     const groupId = params.groupId as string;
     const sessionId = params.sessionId as string;
     const supabase = createClient();
+    const { showAlert } = useAppDialog();
 
     const [session, setSession] = useState<SessionDetail | null>(null);
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -262,7 +265,11 @@ export default function SessionDetailPage() {
 
             const data = await res.json();
             if (!res.ok) {
-                alert(data.error || "Failed to save override.");
+                await showAlert({
+                    title: "Failed To Save Override",
+                    description: data.error || "Failed to save override.",
+                    variant: "error",
+                });
                 return;
             }
 
@@ -606,6 +613,7 @@ export default function SessionDetailPage() {
             >
                 <TabsList>
                     <TabsTrigger value="attendance">Attendance</TabsTrigger>
+                    <TabsTrigger value="coursework">Coursework</TabsTrigger>
                     {violations.length > 0 && (
                         <TabsTrigger
                             value="violations"
@@ -753,6 +761,16 @@ export default function SessionDetailPage() {
                             </TableBody>
                         </Table>
                     </div>
+                </TabsContent>
+
+                <TabsContent value="coursework">
+                    <SessionCourseworkPanel
+                        groupId={groupId}
+                        sessionId={sessionId}
+                        sessionTitle={session.title}
+                        sessionCategory={session.category}
+                        students={allStudents}
+                    />
                 </TabsContent>
 
                 {/* Violations Tab */}
