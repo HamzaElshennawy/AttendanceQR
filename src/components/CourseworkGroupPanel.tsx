@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -15,10 +16,15 @@ import {
 import {
     defaultGradingSettings,
     formatGrade,
-    getGradeValue,
     normalizeGradingSettings,
     type AttendanceStatus,
 } from "@/lib/grading-settings";
+import {
+    calculateAttendanceSummaryByStudent,
+    calculateStudentCourseworkBreakdown,
+    getCourseworkBreakdownCategoriesOrDefault,
+    type CourseworkBreakdownGradeRow,
+} from "@/lib/coursework-breakdown";
 import { AssessmentGradesDialog } from "@/components/coursework/AssessmentGradesDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -282,21 +288,21 @@ export function CourseworkGroupPanel({
 
         setDownloading(true);
 
-        let gradeRows:
-            | {
-                  assessment_id: string;
-                  student_id: string;
-                  score: number;
-              }[]
-            | null = [];
+        const orderedAssessments = [...assessments].sort(
+            (a, b) =>
+                new Date(a.assessment_date).getTime() -
+                new Date(b.assessment_date).getTime(),
+        );
 
-        if (assessments.length) {
+        let gradeRows: CourseworkBreakdownGradeRow[] = [];
+
+        if (orderedAssessments.length) {
             const { data, error } = await supabase
                 .from("coursework_grades")
                 .select("assessment_id, student_id, score")
                 .in(
                     "assessment_id",
-                    assessments.map((assessment) => assessment.id),
+                    orderedAssessments.map((assessment) => assessment.id),
                 );
 
             if (error) {
@@ -309,13 +315,27 @@ export function CourseworkGroupPanel({
                 return;
             }
 
-            gradeRows = data;
+            gradeRows = (data || []) as CourseworkBreakdownGradeRow[];
         }
 
-        let attendanceByUniversityId = new Map<string, number>();
-        let attendanceMaxTotal = 0;
+        const { data: breakdownRows } = await supabase
+            .from("group_coursework_categories")
+            .select(
+                "id, group_id, name, weight, included_kinds, include_attendance, aggregation, aggregation_limit, position",
+            )
+            .eq("group_id", groupId)
+            .order("position", { ascending: true });
+        const breakdownCategories = getCourseworkBreakdownCategoriesOrDefault(
+            breakdownRows || null,
+        );
 
-        if (includeAttendance) {
+        let attendanceByStudentId = new Map<string, number>();
+        let attendanceMaxTotal = 0;
+        const needsAttendanceData =
+            includeAttendance ||
+            breakdownCategories.some((category) => category.include_attendance);
+
+        if (needsAttendanceData) {
             const { data: gradingSettingsRow } = await supabase
                 .from("group_grading_settings")
                 .select(
@@ -332,9 +352,6 @@ export function CourseworkGroupPanel({
                     new Date(a.started_at).getTime() -
                     new Date(b.started_at).getTime(),
             );
-
-            attendanceMaxTotal =
-                orderedSessions.length * Number(gradingSettings.present_grade);
 
             if (orderedSessions.length) {
                 const { data: attendanceRows, error: attendanceError } =
@@ -357,30 +374,19 @@ export function CourseworkGroupPanel({
                     return;
                 }
 
-                const statusBySessionStudent = new Map(
-                    (attendanceRows || []).map((row) => [
-                        `${row.session_id}:${row.university_id}`,
-                        row.status as AttendanceStatus,
-                    ]),
-                );
+                const attendanceSummary = calculateAttendanceSummaryByStudent({
+                    students,
+                    sessions: orderedSessions,
+                    attendanceRows: ((attendanceRows || []) as Array<{
+                        session_id: string;
+                        university_id: string;
+                        status: AttendanceStatus;
+                    }>) || [],
+                    gradingSettings,
+                });
 
-                attendanceByUniversityId = new Map(
-                    students.map((student) => {
-                        const total = orderedSessions.reduce(
-                            (sum, session) =>
-                                sum +
-                                getGradeValue(
-                                    statusBySessionStudent.get(
-                                        `${session.id}:${student.university_id}`,
-                                    ),
-                                    gradingSettings,
-                                ),
-                            0,
-                        );
-
-                        return [student.university_id, total];
-                    }),
-                );
+                attendanceByStudentId = attendanceSummary.byStudentId;
+                attendanceMaxTotal = attendanceSummary.maxTotal;
             }
         }
 
@@ -389,11 +395,6 @@ export function CourseworkGroupPanel({
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet("Coursework");
-        const orderedAssessments = [...assessments].sort(
-            (a, b) =>
-                new Date(a.assessment_date).getTime() -
-                new Date(b.assessment_date).getTime(),
-        );
 
         worksheet.columns = [
             { header: "Name", key: "name", width: 32 },
@@ -408,15 +409,23 @@ export function CourseworkGroupPanel({
             ...(includeAttendance
                 ? [
                       {
-                          header: `Attendance\nCumulative\n${formatGrade(attendanceMaxTotal)}`,
+                          header: `Attendance\nRaw\n${formatGrade(attendanceMaxTotal)}`,
                           key: "attendance_total",
                           width: 18,
                       },
                   ]
                 : []),
-            { header: "Total", key: "total", width: 14 },
-            { header: "Max Total", key: "max_total", width: 14 },
-            { header: "Percentage", key: "percentage", width: 14 },
+            ...breakdownCategories.map((category) => ({
+                header: `${category.name}\nWeighted\n${formatCourseworkScore(category.weight)}`,
+                key: `breakdown_${category.id}`,
+                width: 18,
+            })),
+            { header: "Raw Total", key: "total", width: 14 },
+            { header: "Raw Max Total", key: "max_total", width: 16 },
+            { header: "Raw Percentage", key: "percentage", width: 16 },
+            { header: "Weighted Total", key: "weighted_total", width: 16 },
+            { header: "Weighted Max", key: "weighted_max", width: 16 },
+            { header: "Weighted Percentage", key: "weighted_percentage", width: 18 },
         ];
 
         worksheet.getRow(1).font = { bold: true };
@@ -432,16 +441,13 @@ export function CourseworkGroupPanel({
         };
 
         const gradesByKey = new Map(
-            (gradeRows || []).map((row) => [
-                `${row.student_id}:${row.assessment_id}`,
-                row.score as number,
-            ]),
+            gradeRows.map((row) => [`${row.student_id}:${row.assessment_id}`, row.score]),
         );
         const courseworkMaxTotal = orderedAssessments.reduce(
             (sum, assessment) => sum + Number(assessment.max_score),
             0,
         );
-        const maxTotal = courseworkMaxTotal + attendanceMaxTotal;
+        const rawMaxTotal = courseworkMaxTotal + (includeAttendance ? attendanceMaxTotal : 0);
 
         students.forEach((student) => {
             const rowData: Record<string, string | number> = {
@@ -451,8 +457,7 @@ export function CourseworkGroupPanel({
 
             let total = 0;
             orderedAssessments.forEach((assessment) => {
-                const score =
-                    gradesByKey.get(`${student.id}:${assessment.id}`) ?? "";
+                const score = gradesByKey.get(`${student.id}:${assessment.id}`) ?? "";
                 rowData[assessment.id] = score;
                 if (typeof score === "number") {
                     total += score;
@@ -460,16 +465,42 @@ export function CourseworkGroupPanel({
             });
 
             if (includeAttendance) {
-                const attendanceTotal =
-                    attendanceByUniversityId.get(student.university_id) ?? 0;
+                const attendanceTotal = attendanceByStudentId.get(student.id) ?? 0;
                 rowData.attendance_total = formatGrade(attendanceTotal);
                 total += attendanceTotal;
             }
 
+            const breakdownResult = calculateStudentCourseworkBreakdown({
+                categories: breakdownCategories,
+                assessments: orderedAssessments,
+                grades: gradeRows,
+                studentId: student.id,
+                attendanceEarned: attendanceByStudentId.get(student.id) ?? 0,
+                attendanceMax: attendanceMaxTotal,
+            });
+
+            breakdownResult.categories.forEach((contribution) => {
+                rowData[`breakdown_${contribution.categoryId}`] = formatCourseworkScore(
+                    contribution.weightedScore,
+                );
+            });
+
             rowData.total = total;
-            rowData.max_total = maxTotal;
+            rowData.max_total = rawMaxTotal;
             rowData.percentage =
-                maxTotal > 0 ? `${formatCourseworkScore((total / maxTotal) * 100)}%` : "0%";
+                rawMaxTotal > 0
+                    ? `${formatCourseworkScore((total / rawMaxTotal) * 100)}%`
+                    : "0%";
+            rowData.weighted_total = formatCourseworkScore(
+                breakdownResult.totalWeightedScore,
+            );
+            rowData.weighted_max = formatCourseworkScore(
+                breakdownResult.maxWeightedScore,
+            );
+            rowData.weighted_percentage =
+                breakdownResult.maxWeightedScore > 0
+                    ? `${formatCourseworkScore((breakdownResult.totalWeightedScore / breakdownResult.maxWeightedScore) * 100)}%`
+                    : "0%";
 
             worksheet.addRow(rowData);
         });
@@ -512,6 +543,7 @@ export function CourseworkGroupPanel({
                 </div>
             </div>
 
+
             <div className="flex items-start justify-between gap-4 rounded-lg border bg-white p-4">
                 <div>
                     <h3 className="font-semibold text-gray-900">
@@ -522,7 +554,12 @@ export function CourseworkGroupPanel({
                         session-linked grade items separately from attendance.
                     </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                    <Button asChild variant="outline">
+                        <Link href={`/dashboard/groups/${groupId}/coursework/breakdown`}>
+                            Grading Breakdown
+                        </Link>
+                    </Button>
                     <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
                         <DialogTrigger asChild>
                             <Button variant="outline">
@@ -847,6 +884,17 @@ export function CourseworkGroupPanel({
                                                 >
                                                     Manage
                                                 </Button>
+                                                {assessment.assessment_kind === "quiz" ||
+                                                assessment.assessment_kind === "midterm" ||
+                                                assessment.assessment_kind === "final" ? (
+                                                    <Button asChild variant="outline" size="sm">
+                                                        <Link
+                                                            href={`/dashboard/groups/${groupId}/coursework/${assessment.id}/exam`}
+                                                        >
+                                                            Exam Setup
+                                                        </Link>
+                                                    </Button>
+                                                ) : null}
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
@@ -880,3 +928,13 @@ export function CourseworkGroupPanel({
         </div>
     );
 }
+
+
+
+
+
+
+
+
+
+

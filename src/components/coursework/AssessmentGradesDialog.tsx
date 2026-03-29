@@ -65,13 +65,15 @@ export function AssessmentGradesDialog({
 
     useEffect(() => {
         if (!open || !assessment) {
-            setGradeRows([]);
-            setDraftScores({});
-            setSpreadsheetHeaders([]);
-            setSpreadsheetRows([]);
-            setStudentIdColumn("");
-            setScoreColumn("");
-            return;
+            const timeout = window.setTimeout(() => {
+                setGradeRows([]);
+                setDraftScores({});
+                setSpreadsheetHeaders([]);
+                setSpreadsheetRows([]);
+                setStudentIdColumn("");
+                setScoreColumn("");
+            }, 0);
+            return () => window.clearTimeout(timeout);
         }
 
         const loadGrades = async () => {
@@ -95,7 +97,10 @@ export function AssessmentGradesDialog({
             setLoading(false);
         };
 
-        void loadGrades();
+        const timeout = window.setTimeout(() => {
+            void loadGrades();
+        }, 0);
+        return () => window.clearTimeout(timeout);
     }, [assessment, open, supabase]);
 
     const gradedCount = useMemo(
@@ -131,7 +136,13 @@ export function AssessmentGradesDialog({
                 importedScore !== null
             );
         }).length;
-    }, [scoreColumn, spreadsheetHeaders, spreadsheetRows, studentIdColumn, students]);
+    }, [
+        scoreColumn,
+        spreadsheetHeaders,
+        spreadsheetRows,
+        studentIdColumn,
+        students,
+    ]);
 
     const handleUploadFile = async (
         event: React.ChangeEvent<HTMLInputElement>,
@@ -149,7 +160,9 @@ export function AssessmentGradesDialog({
             const suggestedIdColumn =
                 imported.headers.find((header) =>
                     /(id|code|الكود)/i.test(header),
-                ) || imported.headers[0] || "";
+                ) ||
+                imported.headers[0] ||
+                "";
             const suggestedScoreColumn =
                 imported.headers.find(
                     (header) =>
@@ -186,7 +199,10 @@ export function AssessmentGradesDialog({
         }
 
         const studentMap = new Map(
-            students.map((student) => [student.university_id.trim(), student.id]),
+            students.map((student) => [
+                student.university_id.trim(),
+                student.id,
+            ]),
         );
 
         setDraftScores((current) => {
@@ -300,7 +316,7 @@ export function AssessmentGradesDialog({
             open={open}
             onOpenChange={onOpenChange}
         >
-            <DialogContent className="max-w-4xl">
+            <DialogContent className="w-[96vw] max-w-250! max-h-[94vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>
                         {assessment?.title || "Manage Grades"}
@@ -309,8 +325,8 @@ export function AssessmentGradesDialog({
 
                 {assessment && (
                     <div className="rounded-lg border bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                        {gradedCount} of {students.length} students graded · Max{" "}
-                        {formatCourseworkScore(assessment.max_score)}
+                        {gradedCount} of {students.length} students graded · Max
+                        Grade {formatCourseworkScore(assessment.max_score)}
                     </div>
                 )}
 
@@ -321,7 +337,8 @@ export function AssessmentGradesDialog({
                             Import Grades From Excel Or CSV
                         </div>
                         <p className="mt-1 text-sm text-gray-500">
-                            Upload a file, choose the student ID column and the score column, then import into this assessment.
+                            Upload a file, choose the student ID column and the
+                            score column, then import into this assessment.
                         </p>
                     </div>
                     <div className="grid gap-4 md:grid-cols-3">
@@ -382,7 +399,8 @@ export function AssessmentGradesDialog({
                     {spreadsheetHeaders.length > 0 && (
                         <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-600">
                             <span>
-                                {spreadsheetRows.length} rows loaded · {matchedImportCount} matched students
+                                {spreadsheetRows.length} rows loaded ·{" "}
+                                {matchedImportCount} matched students
                             </span>
                             <Button
                                 type="button"
@@ -432,14 +450,18 @@ export function AssessmentGradesDialog({
                                         <td className="px-4 py-3">
                                             <Input
                                                 value={
-                                                    draftScores[student.id] || ""
+                                                    draftScores[student.id] ||
+                                                    ""
                                                 }
                                                 onChange={(event) =>
-                                                    setDraftScores((current) => ({
-                                                        ...current,
-                                                        [student.id]:
-                                                            event.target.value,
-                                                    }))
+                                                    setDraftScores(
+                                                        (current) => ({
+                                                            ...current,
+                                                            [student.id]:
+                                                                event.target
+                                                                    .value,
+                                                        }),
+                                                    )
                                                 }
                                                 placeholder="Leave blank if not graded"
                                                 inputMode="decimal"

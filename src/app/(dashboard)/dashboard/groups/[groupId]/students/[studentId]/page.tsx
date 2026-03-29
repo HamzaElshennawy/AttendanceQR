@@ -39,6 +39,11 @@ import {
     type CourseworkAssessmentKind,
     type SessionCategory,
 } from "@/lib/coursework";
+import {
+    calculateStudentCourseworkBreakdown,
+    getCourseworkBreakdownCategoriesOrDefault,
+    type CourseworkBreakdownCategory,
+} from "@/lib/coursework-breakdown";
 
 interface Student {
     id: string;
@@ -116,6 +121,9 @@ export default function StudentHistoryPage() {
     );
     const [gradingSettings, setGradingSettings] =
         useState<GradingSettings>(defaultGradingSettings);
+    const [breakdownCategories, setBreakdownCategories] = useState<
+        CourseworkBreakdownCategory[]
+    >([]);
     const [loading, setLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
@@ -137,6 +145,7 @@ export default function StudentHistoryPage() {
             { data: attendanceData },
             { data: gradingSettingsData },
             { data: courseworkData },
+            { data: breakdownData },
         ] =
             await Promise.all([
                 supabase
@@ -163,6 +172,13 @@ export default function StudentHistoryPage() {
                         "score, assessment:coursework_assessments(id, title, assessment_kind, max_score, category, assessment_date)",
                     )
                     .eq("student_id", studentId),
+                supabase
+                    .from("group_coursework_categories")
+                    .select(
+                        "id, group_id, name, weight, included_kinds, include_attendance, aggregation, aggregation_limit, position",
+                    )
+                    .eq("group_id", groupId)
+                    .order("position", { ascending: true }),
             ]);
 
         const sessionIds = (sessionsData || []).map((session) => session.id);
@@ -190,6 +206,9 @@ export default function StudentHistoryPage() {
                         : row.assessment,
                 }))
                 .filter((row) => row.assessment),
+        );
+        setBreakdownCategories(
+            getCourseworkBreakdownCategoriesOrDefault(breakdownData || null),
         );
         setLoading(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,6 +301,28 @@ export default function StudentHistoryPage() {
         tutorialGradeTotal,
         tutorialSessions.length,
     );
+    const weightedCoursework = calculateStudentCourseworkBreakdown({
+        categories: breakdownCategories,
+        assessments: courseworkGrades
+            .filter((row) => row.assessment)
+            .map((row) => ({
+                id: row.assessment?.id || "",
+                assessment_kind: row.assessment?.assessment_kind || "other",
+                max_score: row.assessment?.max_score || 0,
+            }))
+            .filter((assessment) => assessment.id),
+        grades: courseworkGrades
+            .filter((row) => row.assessment)
+            .map((row) => ({
+                student_id: student.id,
+                assessment_id: row.assessment?.id || "",
+                score: row.score,
+            }))
+            .filter((row) => row.assessment_id),
+        studentId: student.id,
+        attendanceEarned: overallGradeTotal,
+        attendanceMax: totalSessions * gradingSettings.present_grade,
+    });
 
     let recentAbsenceStreak = 0;
     for (const session of endedSessions) {
@@ -415,13 +456,16 @@ export default function StudentHistoryPage() {
                 <div className="rounded-lg border bg-white p-4">
                     <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
                         <CheckCircle2 className="h-4 w-4" />
-                        Coursework
+                        Weighted Total
                     </div>
                     <p className="text-2xl font-bold text-gray-900">
-                        {formatCourseworkScore(courseworkTotal)}
+                        {formatCourseworkScore(weightedCoursework.totalWeightedScore)}
                     </p>
                     <p className="text-xs text-gray-500">
-                        / {formatCourseworkScore(courseworkMaxTotal)}
+                        / {formatCourseworkScore(weightedCoursework.maxWeightedScore)}
+                    </p>
+                    <p className="mt-2 text-xs text-gray-500">
+                        Raw coursework {formatCourseworkScore(courseworkTotal)} / {formatCourseworkScore(courseworkMaxTotal)}
                     </p>
                 </div>
             </div>
@@ -630,3 +674,4 @@ export default function StudentHistoryPage() {
         </div>
     );
 }
+
