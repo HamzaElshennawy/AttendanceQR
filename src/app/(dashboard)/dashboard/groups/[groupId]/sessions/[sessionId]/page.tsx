@@ -44,6 +44,7 @@ import {
     Check,
     X,
     FilePenLine,
+    ChevronRight,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SessionCourseworkPanel } from "@/components/SessionCourseworkPanel";
@@ -129,6 +130,7 @@ export default function SessionDetailPage() {
     const { showAlert } = useAppDialog();
 
     const [session, setSession] = useState<SessionDetail | null>(null);
+    const [groupName, setGroupName] = useState("");
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
     const [allStudents, setAllStudents] = useState<Student[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
@@ -176,6 +178,7 @@ export default function SessionDetailPage() {
     const fetchData = useCallback(async () => {
         const [
             sessionRes,
+            groupRes,
             attendanceRes,
             studentsRes,
             gradingSettingsRes,
@@ -187,6 +190,11 @@ export default function SessionDetailPage() {
                     .select("*")
                     .eq("id", sessionId)
                     .single(),
+                supabase
+                    .from("groups")
+                    .select("name")
+                    .eq("id", groupId)
+                    .maybeSingle(),
                 supabase
                     .from("attendance_records")
                     .select(
@@ -223,6 +231,7 @@ export default function SessionDetailPage() {
         );
 
         setSession(sessionRes.data);
+        setGroupName(groupRes.data?.name || "Group");
         setAttendance(normalizedAttendance);
         setAllStudents(studentsRes.data || []);
         setGradingSettings(normalizeGradingSettings(gradingSettingsRes.data));
@@ -432,193 +441,114 @@ export default function SessionDetailPage() {
     const averageGrade = getAverageGrade(totalGradePoints, allStudents.length);
 
     return (
-        <div>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => router.push(`/dashboard/groups/${groupId}`)}
-                >
-                    <ArrowLeft className="h-5 w-5" />
-                </Button>
-                <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                        {isEditingTitle ? (
-                            <div className="flex items-center gap-2">
-                                <Input
-                                    value={editTitle}
-                                    onChange={(e) => setEditTitle(e.target.value)}
-                                    className="h-8 text-lg font-bold w-[250px] bg-white text-gray-900 border-gray-300"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") handleUpdateTitle();
-                                        if (e.key === "Escape") setIsEditingTitle(false);
-                                    }}
-                                    disabled={isUpdatingTitle}
-                                />
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    onClick={handleUpdateTitle}
-                                    disabled={isUpdatingTitle}
-                                >
-                                    {isUpdatingTitle ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <Check className="h-4 w-4" />
-                                    )}
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => setIsEditingTitle(false)}
-                                    disabled={isUpdatingTitle}
-                                >
-                                    <X className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        ) : (
-                            <>
-                                <h1 className="text-2xl font-bold text-gray-900">
-                                    {session.title || "Untitled Session"}
-                                </h1>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-gray-400 hover:text-gray-600 transition-colors"
-                                    onClick={() => {
-                                        setEditTitle(session.title || "");
-                                        setIsEditingTitle(true);
-                                    }}
-                                >
-                                    <Pencil className="h-4 w-4" />
-                                </Button>
-                            </>
-                        )}
-                        {session.is_active ? (
-                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                                Live
-                            </Badge>
-                        ) : (
-                            <Badge variant="secondary">Ended</Badge>
-                        )}
-                        <Badge
-                            variant="outline"
-                            className={sessionCategoryCopy[session.category].badgeClass}
-                        >
-                            {sessionCategoryCopy[session.category].label}
-                        </Badge>
-                        {session.latitude && (
-                            <Badge
-                                variant="outline"
-                                className="text-blue-600 border-blue-200"
-                            >
-                                <MapPin className="h-3 w-3 mr-1" /> Location
-                            </Badge>
-                        )}
-                    </div>
-                    <p className="text-gray-500 text-sm mt-1">
-                        {new Date(session.started_at).toLocaleDateString(
-                            "en-US",
-                            {
-                                weekday: "long",
-                                month: "long",
-                                day: "numeric",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                            },
-                        )}
-                    </p>
+        <div className="space-y-6">
+            <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                    <button type="button" onClick={() => router.push("/dashboard")} className="transition-colors hover:text-primary">Dashboard</button>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <button type="button" onClick={() => router.push(`/dashboard/groups/${groupId}`)} className="transition-colors hover:text-primary">{groupName || "Group"}</button>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <span className="text-primary">{session.title || "Session"}</span>
                 </div>
+
+                <Button variant="ghost" className="w-fit px-0 text-muted-foreground hover:text-foreground" onClick={() => router.push(`/dashboard/groups/${groupId}`)}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back to group hub
+                </Button>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-                <div className="bg-white rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                        <Users className="h-4 w-4" />
-                        Grade Total
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {formatGrade(totalGradePoints)}
-                    </p>
-                </div>
-                <div className="bg-white rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Grade Avg
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {formatGrade(averageGrade)}
-                    </p>
-                </div>
-                <div className="bg-white rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                        <Clock className="h-4 w-4" />
-                        Late
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {lateCount}
-                    </p>
-                </div>
-                <div className="bg-white rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                        <FilePenLine className="h-4 w-4" />
-                        Excused
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {excusedCount}
-                    </p>
-                </div>
-                <div className="bg-white rounded-lg border p-4">
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                        <Clock className="h-4 w-4" />
-                        Duration
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {session.duration_minutes} min
-                    </p>
-                </div>
-                {violations.length > 0 && (
-                    <div className="bg-red-50 rounded-lg border border-red-200 p-4">
-                        <div className="flex items-center gap-2 text-sm text-red-600 mb-1">
-                            <AlertTriangle className="h-4 w-4" />
-                            Violations
+            <section className="overflow-hidden rounded-[30px] border border-border/70 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(245,248,252,0.96))] shadow-[0_24px_60px_-42px_rgba(22,47,95,0.3)]">
+                <div className="grid gap-6 border-b border-border/70 px-6 py-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="bg-primary/6 text-primary">Session record</Badge>
+                            {session.is_active ? (
+                                <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Live</Badge>
+                            ) : (
+                                <Badge variant="secondary">Ended</Badge>
+                            )}
+                            <Badge variant="outline" className={sessionCategoryCopy[session.category].badgeClass}>
+                                {sessionCategoryCopy[session.category].label}
+                            </Badge>
+                            {session.latitude ? (
+                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+                                    <MapPin className="mr-1 h-3 w-3" />
+                                    Location validated
+                                </Badge>
+                            ) : null}
                         </div>
-                        <p className="text-2xl font-bold text-red-700">
-                            {violations.length}
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            {isEditingTitle ? (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Input
+                                        value={editTitle}
+                                        onChange={(e) => setEditTitle(e.target.value)}
+                                        className="h-10 w-[280px] bg-background text-xl font-semibold"
+                                        autoFocus
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") handleUpdateTitle();
+                                            if (e.key === "Escape") setIsEditingTitle(false);
+                                        }}
+                                        disabled={isUpdatingTitle}
+                                    />
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700" onClick={handleUpdateTitle} disabled={isUpdatingTitle}>
+                                        {isUpdatingTitle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setIsEditingTitle(false)} disabled={isUpdatingTitle}>
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <>
+                                    <h1 className="font-display text-4xl text-foreground">{session.title || "Untitled Session"}</h1>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground transition-colors hover:text-foreground" onClick={() => { setEditTitle(session.title || ""); setIsEditingTitle(true); }}>
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                </>
+                            )}
+                        </div>
+
+                        <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+                            Review attendance status, session-linked coursework, and any integrity issues without leaving the session workspace.
                         </p>
                     </div>
-                )}
-            </div>
 
-            {/* Download Button */}
-            <div className="flex justify-end mb-4">
-                <Button
-                    onClick={handleDownloadExcel}
-                    variant="outline"
-                >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download Excel
-                </Button>
-            </div>
+                    <div className="rounded-[24px] border border-border/70 bg-background/90 px-5 py-5 shadow-sm">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Session timing</div>
+                        <div className="mt-3 space-y-3 text-sm text-muted-foreground">
+                            <div>
+                                <div className="font-medium text-foreground">
+                                    {new Date(session.started_at).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                                </div>
+                                <div className="mt-1">
+                                    {new Date(session.started_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                            </div>
+                            <div className="rounded-[20px] border border-border/60 bg-card px-4 py-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Duration</div>
+                                <div className="mt-2 text-2xl font-semibold text-foreground">{session.duration_minutes} min</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-            <Tabs
-                defaultValue="attendance"
-                className="space-y-4"
-            >
+                <div className={`grid gap-4 px-6 py-6 lg:px-8 ${violations.length > 0 ? "md:grid-cols-3 xl:grid-cols-6" : "md:grid-cols-2 xl:grid-cols-5"}`}>
+                    <div className="rounded-[24px] border border-border/70 bg-background/96 px-4 py-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Users className="h-4 w-4" />Grade total</div><p className="mt-3 text-3xl font-semibold text-foreground">{formatGrade(totalGradePoints)}</p></div>
+                    <div className="rounded-[24px] border border-border/70 bg-background/96 px-4 py-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="h-4 w-4" />Grade average</div><p className="mt-3 text-3xl font-semibold text-foreground">{formatGrade(averageGrade)}</p></div>
+                    <div className="rounded-[24px] border border-border/70 bg-background/96 px-4 py-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="h-4 w-4" />Late</div><p className="mt-3 text-3xl font-semibold text-foreground">{lateCount}</p></div>
+                    <div className="rounded-[24px] border border-border/70 bg-background/96 px-4 py-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><FilePenLine className="h-4 w-4" />Excused</div><p className="mt-3 text-3xl font-semibold text-foreground">{excusedCount}</p></div>
+                    <div className="rounded-[24px] border border-border/70 bg-background/96 px-4 py-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Download className="h-4 w-4" />Export</div><Button onClick={handleDownloadExcel} variant="outline" className="mt-3 w-full"><Download className="mr-2 h-4 w-4" />Download Excel</Button></div>
+                    {violations.length > 0 && (<div className="rounded-[24px] border border-red-200 bg-red-50/90 px-4 py-4"><div className="flex items-center gap-2 text-sm text-red-700"><AlertTriangle className="h-4 w-4" />Violations</div><p className="mt-3 text-3xl font-semibold text-red-700">{violations.length}</p></div>)}
+                </div>
+            </section>
+
+            <Tabs defaultValue="attendance" className="space-y-5">
                 <TabsList>
                     <TabsTrigger value="attendance">Attendance</TabsTrigger>
                     <TabsTrigger value="coursework">Coursework</TabsTrigger>
                     {violations.length > 0 && (
-                        <TabsTrigger
-                            value="violations"
-                            className="text-red-600"
-                        >
+                        <TabsTrigger value="violations" className="text-red-700">
                             Violations ({violations.length})
                         </TabsTrigger>
                     )}
@@ -626,7 +556,7 @@ export default function SessionDetailPage() {
 
                 {/* Attendance Tab */}
                 <TabsContent value="attendance">
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="overflow-hidden rounded-[28px] border border-border/70 bg-background/96 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.22)]">
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -650,7 +580,7 @@ export default function SessionDetailPage() {
                                     );
                                     return (
                                         <TableRow key={student.id}>
-                                            <TableCell className="text-gray-400">
+                                            <TableCell className="text-muted-foreground">
                                                 {index + 1}
                                             </TableCell>
                                             <TableCell className="font-medium">
@@ -679,13 +609,13 @@ export default function SessionDetailPage() {
                                                 ) : (
                                                     <Badge
                                                         variant="secondary"
-                                                        className="text-gray-500"
+                                                        className="text-muted-foreground"
                                                     >
                                                         Absent
                                                     </Badge>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="font-medium text-gray-700">
+                                            <TableCell className="font-medium text-foreground">
                                                 {formatGrade(
                                                     getGradeValue(
                                                         record?.status as
@@ -702,7 +632,7 @@ export default function SessionDetailPage() {
                                                         className={
                                                             record.recorded_via ===
                                                             "manual"
-                                                                ? "border-blue-200 text-blue-700"
+                                                                ? "border-primary/20 bg-primary/5 text-primary"
                                                                 : ""
                                                         }
                                                     >
@@ -715,7 +645,7 @@ export default function SessionDetailPage() {
                                                     "—"
                                                 )}
                                             </TableCell>
-                                            <TableCell className="text-gray-500 text-sm">
+                                            <TableCell className="text-sm text-muted-foreground">
                                                 {record
                                                     ? new Date(
                                                           record.scanned_at,
@@ -728,16 +658,17 @@ export default function SessionDetailPage() {
                                                       )
                                                     : "—"}
                                             </TableCell>
-                                            <TableCell className="text-sm text-gray-500">
+                                            <TableCell className="text-sm text-muted-foreground">
                                                 {record?.note || "—"}
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="text-right">
                                                 {!record ||
                                                 record.recorded_via ===
                                                     "manual" ? (
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
+                                                        className="min-w-24"
                                                         onClick={() =>
                                                             openOverrideDialog(
                                                                 student,
@@ -750,7 +681,7 @@ export default function SessionDetailPage() {
                                                             : "Override"}
                                                     </Button>
                                                 ) : (
-                                                    <span className="text-xs text-gray-400">
+                                                    <span className="text-xs font-medium text-muted-foreground">
                                                         QR locked
                                                     </span>
                                                 )}
@@ -776,7 +707,7 @@ export default function SessionDetailPage() {
                 {/* Violations Tab */}
                 {violations.length > 0 && (
                     <TabsContent value="violations">
-                        <div className="border rounded-lg overflow-hidden">
+                        <div className="overflow-hidden rounded-[28px] border border-border/70 bg-background/96 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.22)]">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
@@ -814,7 +745,7 @@ export default function SessionDetailPage() {
                                                     ? `${v.details.distance_meters as number}m away (limit: ${v.details.radius_meters as number}m)`
                                                     : `Device already used by ${(v.details.original_student_name as string) || "Unknown"} (${v.details.original_student_id as string})`}
                                             </TableCell>
-                                            <TableCell className="text-gray-500 text-sm">
+                                            <TableCell className="text-sm text-muted-foreground">
                                                 {new Date(
                                                     v.created_at,
                                                 ).toLocaleTimeString("en-US", {
@@ -835,24 +766,24 @@ export default function SessionDetailPage() {
                 open={overrideOpen}
                 onOpenChange={setOverrideOpen}
             >
-                <DialogContent>
+                <DialogContent className="border-border/70 bg-background">
                     <DialogHeader>
-                        <DialogTitle>Attendance Override</DialogTitle>
+                        <DialogTitle>Attendance override</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <div>
-                            <p className="font-medium text-gray-900">
+                    <div className="space-y-5 py-2">
+                        <div className="rounded-[22px] border border-border/70 bg-card px-4 py-4">
+                            <p className="font-medium text-foreground">
                                 {overrideStudent?.name}
                             </p>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-muted-foreground">
                                 {overrideStudent?.university_id}
                             </p>
                         </div>
-                        <div className="space-y-2">
-                            <p className="text-sm font-medium text-gray-700">
+                        <div className="space-y-3">
+                            <p className="text-sm font-medium text-foreground">
                                 Status
                             </p>
-                            <div className="flex gap-2">
+                            <div className="grid gap-2 sm:grid-cols-3">
                                 <Button
                                     type="button"
                                     variant={
@@ -860,6 +791,7 @@ export default function SessionDetailPage() {
                                             ? "default"
                                             : "outline"
                                     }
+                                    className="justify-center"
                                     onClick={() => setOverrideStatus("present")}
                                 >
                                     Present
@@ -871,6 +803,7 @@ export default function SessionDetailPage() {
                                             ? "default"
                                             : "outline"
                                     }
+                                    className="justify-center"
                                     onClick={() => setOverrideStatus("late")}
                                 >
                                     Late
@@ -882,6 +815,7 @@ export default function SessionDetailPage() {
                                             ? "default"
                                             : "outline"
                                     }
+                                    className="justify-center"
                                     onClick={() => setOverrideStatus("excused")}
                                 >
                                     Excused
@@ -891,7 +825,7 @@ export default function SessionDetailPage() {
                         <div className="space-y-2">
                             <label
                                 htmlFor="overrideNote"
-                                className="text-sm font-medium text-gray-700"
+                                className="text-sm font-medium text-foreground"
                             >
                                 Note
                             </label>
@@ -903,12 +837,10 @@ export default function SessionDetailPage() {
                                 }
                                 placeholder="Optional reason or explanation"
                                 rows={4}
-                                className="flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                className="flex min-h-[112px] w-full rounded-2xl border border-input bg-background px-3 py-3 text-sm shadow-xs outline-none focus-visible:border-primary/40 focus-visible:ring-4 focus-visible:ring-primary/10"
                             />
-                            <p className="text-xs text-gray-500">
-                                Late attendance currently counts as{" "}
-                                {formatGrade(gradingSettings.late_grade)} for
-                                this group.
+                            <p className="text-xs text-muted-foreground">
+                                Late attendance currently counts as {formatGrade(gradingSettings.late_grade)} for this group.
                             </p>
                         </div>
                     </div>
@@ -928,7 +860,7 @@ export default function SessionDetailPage() {
                             {savingOverride && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            Save Override
+                            Save override
                         </Button>
                     </DialogFooter>
                 </DialogContent>

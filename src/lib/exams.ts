@@ -1,10 +1,6 @@
 import { formatCourseworkScore } from "@/lib/coursework";
 
-export type ExamQuestionType =
-    | "multiple_choice"
-    | "true_false"
-    | "short_answer"
-    | "essay";
+export type ExamQuestionType = "multiple_choice" | "true_false";
 
 export type ExamAttemptStatus =
     | "in_progress"
@@ -136,8 +132,8 @@ export const examQuestionTypeOptions: Array<{
 }> = [
     { value: "multiple_choice", label: "Multiple Choice" },
     { value: "true_false", label: "True / False" },
-    { value: "short_answer", label: "Short Answer" },
-    { value: "essay", label: "Essay" },
+    //{ value: "short_answer", label: "Short Answer" },
+    //{ value: "essay", label: "Essay" },
 ];
 
 function toNumber(value: unknown, fallback: number) {
@@ -149,13 +145,17 @@ export function normalizeExamConfig(
     value?: Partial<AssessmentExamConfig> | Record<string, unknown> | null,
 ): AssessmentExamConfig {
     return {
-        assessment_id: typeof value?.assessment_id === "string" ? value.assessment_id : "",
+        assessment_id:
+            typeof value?.assessment_id === "string" ? value.assessment_id : "",
         group_id: typeof value?.group_id === "string" ? value.group_id : "",
         is_enabled: Boolean(value?.is_enabled),
         is_published: Boolean(value?.is_published),
         start_at: typeof value?.start_at === "string" ? value.start_at : null,
         end_at: typeof value?.end_at === "string" ? value.end_at : null,
-        duration_minutes: Math.max(1, Math.round(toNumber(value?.duration_minutes, 30))),
+        duration_minutes: Math.max(
+            1,
+            Math.round(toNumber(value?.duration_minutes, 30)),
+        ),
         max_attempts: Math.max(1, Math.round(toNumber(value?.max_attempts, 1))),
         shuffle_questions: value?.shuffle_questions !== false,
         shuffle_choices: value?.shuffle_choices !== false,
@@ -164,7 +164,8 @@ export function normalizeExamConfig(
         show_results_immediately: Boolean(value?.show_results_immediately),
         require_session_attendance: Boolean(value?.require_session_attendance),
         access_code:
-            typeof value?.access_code === "string" && value.access_code.trim().length > 0
+            typeof value?.access_code === "string" &&
+            value.access_code.trim().length > 0
                 ? value.access_code.trim()
                 : null,
     };
@@ -182,9 +183,7 @@ export function normalizeExamQuestion(
         description:
             typeof value?.description === "string" ? value.description : null,
         question_type:
-            value?.question_type === "true_false" ||
-            value?.question_type === "short_answer" ||
-            value?.question_type === "essay"
+            value?.question_type === "true_false"
                 ? value.question_type
                 : "multiple_choice",
         points: Math.max(0, toNumber(value?.points, 1)),
@@ -192,7 +191,8 @@ export function normalizeExamQuestion(
         is_required: value?.is_required !== false,
         is_published: value?.is_published !== false,
         answer_text:
-            typeof value?.answer_text === "string" && value.answer_text.trim().length > 0
+            typeof value?.answer_text === "string" &&
+            value.answer_text.trim().length > 0
                 ? value.answer_text.trim()
                 : null,
     };
@@ -206,7 +206,9 @@ export function normalizeQuestionChoice(
     return {
         id: typeof value?.id === "string" ? value.id : crypto.randomUUID(),
         question_id:
-            typeof value?.question_id === "string" ? value.question_id : questionId,
+            typeof value?.question_id === "string"
+                ? value.question_id
+                : questionId,
         label: typeof value?.label === "string" ? value.label : "",
         position: Math.max(0, Math.round(toNumber(value?.position, index))),
         is_correct: Boolean(value?.is_correct),
@@ -248,7 +250,8 @@ export function getDefaultChoicesForQuestionType(type: ExamQuestionType) {
 
 export function formatExamQuestionType(type: ExamQuestionType) {
     return (
-        examQuestionTypeOptions.find((option) => option.value === type)?.label ?? type
+        examQuestionTypeOptions.find((option) => option.value === type)
+            ?.label ?? type
     );
 }
 
@@ -275,7 +278,9 @@ export function buildAttemptPresentation(args: {
     choiceOrder: Record<string, string[]>;
 }) {
     const { questions, questionOrder, choiceOrder } = args;
-    const questionMap = new Map(questions.map((question) => [question.id, question]));
+    const questionMap = new Map(
+        questions.map((question) => [question.id, question]),
+    );
 
     return questionOrder
         .map((questionId) => {
@@ -284,9 +289,13 @@ export function buildAttemptPresentation(args: {
             const orderedChoices = choiceOrder[question.id]?.length
                 ? choiceOrder[question.id]
                       .map((choiceId) =>
-                          question.choices.find((choice) => choice.id === choiceId),
+                          question.choices.find(
+                              (choice) => choice.id === choiceId,
+                          ),
                       )
-                      .filter((choice): choice is QuestionChoice => Boolean(choice))
+                      .filter((choice): choice is QuestionChoice =>
+                          Boolean(choice),
+                      )
                 : sortQuestions(question.choices);
 
             return {
@@ -304,11 +313,18 @@ export function buildAttemptPresentation(args: {
                 })),
             } satisfies PublicExamQuestion;
         })
-        .filter((question): question is PublicExamQuestion => Boolean(question));
+        .filter((question): question is PublicExamQuestion =>
+            Boolean(question),
+        );
 }
 
-export function calculateAttemptMaxScore(questions: Pick<AssessmentQuestion, "points">[]) {
-    return questions.reduce((sum, question) => sum + Number(question.points || 0), 0);
+export function calculateAttemptMaxScore(
+    questions: Pick<AssessmentQuestion, "points">[],
+) {
+    return questions.reduce(
+        (sum, question) => sum + Number(question.points || 0),
+        0,
+    );
 }
 
 export function gradeAttemptAnswers(args: {
@@ -316,7 +332,9 @@ export function gradeAttemptAnswers(args: {
     answers: AttemptAnswer[];
 }) {
     const { questions, answers } = args;
-    const answerMap = new Map(answers.map((answer) => [answer.question_id, answer]));
+    const answerMap = new Map(
+        answers.map((answer) => [answer.question_id, answer]),
+    );
     const results: GradeAnswerResult[] = [];
 
     for (const question of questions) {
@@ -324,22 +342,33 @@ export function gradeAttemptAnswers(args: {
         if (!answer) {
             results.push({
                 questionId: question.id,
-                isCorrect: isObjectiveQuestion(question.question_type) ? false : null,
-                awardedPoints: isObjectiveQuestion(question.question_type) ? 0 : null,
+                isCorrect: isObjectiveQuestion(question.question_type)
+                    ? false
+                    : null,
+                awardedPoints: isObjectiveQuestion(question.question_type)
+                    ? 0
+                    : null,
                 needsManualReview: !isObjectiveQuestion(question.question_type),
             });
             continue;
         }
 
-        if (question.question_type === "multiple_choice" || question.question_type === "true_false") {
+        if (
+            question.question_type === "multiple_choice" ||
+            question.question_type === "true_false"
+        ) {
             const correctChoiceIds = question.choices
                 .filter((choice) => choice.is_correct)
                 .map((choice) => choice.id)
                 .sort();
-            const selectedChoiceIds = [...(answer.selected_choice_ids || [])].sort();
+            const selectedChoiceIds = [
+                ...(answer.selected_choice_ids || []),
+            ].sort();
             const isCorrect =
                 correctChoiceIds.length === selectedChoiceIds.length &&
-                correctChoiceIds.every((choiceId, index) => selectedChoiceIds[index] === choiceId);
+                correctChoiceIds.every(
+                    (choiceId, index) => selectedChoiceIds[index] === choiceId,
+                );
 
             results.push({
                 questionId: question.id,
@@ -366,7 +395,9 @@ export function calculateExamScoreSummary(results: GradeAnswerResult[]) {
         (sum, result) => sum + Number(result.awardedPoints || 0),
         0,
     );
-    const requiresManualReview = results.some((result) => result.needsManualReview);
+    const requiresManualReview = results.some(
+        (result) => result.needsManualReview,
+    );
 
     return {
         autoGradedScore,
@@ -379,7 +410,9 @@ export function formatExamWindow(startAt: string | null, endAt: string | null) {
         return "Always open";
     }
 
-    const start = startAt ? new Date(startAt).toLocaleString("en-US") : "Any time";
+    const start = startAt
+        ? new Date(startAt).toLocaleString("en-US")
+        : "Any time";
     const end = endAt ? new Date(endAt).toLocaleString("en-US") : "No deadline";
     return `${start} to ${end}`;
 }

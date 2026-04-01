@@ -77,12 +77,15 @@ export default function AdminFeedbackDetailPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between gap-4">
+            <section className="flex flex-col gap-4 rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(245,248,252,0.96))] px-6 py-6 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.28)] sm:flex-row sm:items-start sm:justify-between sm:px-7">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">
+                    <Badge className="rounded-full border-primary/20 bg-primary/8 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary hover:bg-primary/8">
+                        Feedback detail
+                    </Badge>
+                    <h1 className="mt-4 font-display text-[2rem] leading-tight text-foreground">
                         Feedback Detail
                     </h1>
-                    <p className="text-gray-500 mt-1">
+                    <p className="mt-3 text-sm leading-6 text-soft">
                         Full submission details and attachments.
                     </p>
                 </div>
@@ -92,10 +95,10 @@ export default function AdminFeedbackDetailPage() {
                 >
                     Back to Admin Feedback
                 </Link>
-            </div>
+            </section>
 
-            <Card className="border-gray-300 shadow-sm">
-                <CardHeader className="border-b border-gray-200 bg-gray-50/80">
+            <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                <CardHeader className="border-b border-border/70 bg-background/70">
                     <CardTitle className="text-lg">
                         {feedback.professor_name}
                     </CardTitle>

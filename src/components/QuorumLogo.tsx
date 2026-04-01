@@ -36,7 +36,9 @@ export function QuorumLogo({
     return (
         <div className={`flex items-center gap-2 ${className}`}>
             <QuorumIcon className="h-full w-auto" />
-            <span className={`font-bold tracking-tight ${textClassName}`}>
+            <span
+                className={`font-display text-lg font-semibold tracking-[-0.04em] ${textClassName}`}
+            >
                 Quorum
             </span>
         </div>

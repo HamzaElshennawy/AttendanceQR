@@ -239,17 +239,19 @@ export default function FeedbackPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold text-gray-900">Feedback</h1>
-                <p className="text-gray-500 mt-1">
-                    Share what is working, what is confusing, or what should be
-                    improved next.
+            <section className="overflow-hidden rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(245,248,252,0.96))] px-6 py-6 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.28)] sm:px-7">
+                <Badge className="rounded-full border-primary/20 bg-primary/8 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary hover:bg-primary/8">
+                    Feedback hub
+                </Badge>
+                <h1 className="mt-4 font-display text-[2rem] leading-tight text-foreground">Product feedback</h1>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-soft">
+                    Share what is working, what is confusing, and what should be improved next with low-friction reporting and visible submission history.
                 </p>
-            </div>
+            </section>
 
             <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-                <Card className="border-gray-300 shadow-sm">
-                    <CardHeader className="border-b border-gray-200 bg-gray-50/80">
+                <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    <CardHeader className="border-b border-border/70 bg-background/70">
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-200 bg-blue-100">
                                 <MessageSquarePlus className="h-5 w-5 text-blue-700" />
@@ -500,8 +502,8 @@ export default function FeedbackPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="border-gray-300 shadow-sm">
-                    <CardHeader className="border-b border-gray-200 bg-gray-50/80">
+                <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    <CardHeader className="border-b border-border/70 bg-background/70">
                         <CardTitle className="text-lg">
                             Your Recent Feedback
                         </CardTitle>

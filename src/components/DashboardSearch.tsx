@@ -96,14 +96,16 @@ export function DashboardSearch() {
         <>
             <Button
                 variant="outline"
-                className="w-full justify-between text-gray-500 lg:w-80"
+                className="h-11 w-full justify-between rounded-2xl border-border/70 bg-card/80 px-4 text-soft shadow-[inset_0_1px_0_rgb(255_255_255_/_0.75)] hover:bg-accent/55 lg:w-[22rem]"
                 onClick={() => setOpen(true)}
             >
                 <span className="flex items-center gap-2">
                     <Search className="h-4 w-4" />
                     Search Quorum
                 </span>
-                <span className="text-xs text-gray-400">Ctrl/Cmd K</span>
+                <span className="rounded-full border border-border/70 bg-background/80 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                    Ctrl/Cmd K
+                </span>
             </Button>
 
             <Dialog
@@ -121,36 +123,36 @@ export function DashboardSearch() {
                             onChange={(event) => setQuery(event.target.value)}
                             placeholder="Search groups, students, sessions, coursework..."
                         />
-                        <p className="text-sm text-gray-500">{helperText}</p>
-                        <div className="max-h-[55vh] overflow-auto rounded-lg border">
+                        <p className="text-sm text-soft">{helperText}</p>
+                        <div className="max-h-[55vh] overflow-auto rounded-2xl border border-border/70 bg-card/50">
                             {results.length > 0 ? (
-                                <div className="divide-y">
+                                <div className="divide-y divide-border/60">
                                     {results.map((result) => (
                                         <button
                                             key={`${result.type}-${result.id}`}
                                             type="button"
-                                            className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left hover:bg-gray-50"
+                                            className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-accent/45"
                                             onClick={() => {
                                                 setOpen(false);
                                                 router.push(result.href);
                                             }}
                                         >
                                             <div>
-                                                <div className="font-medium text-gray-900">
+                                                <div className="font-medium text-foreground">
                                                     {result.title}
                                                 </div>
-                                                <div className="text-sm text-gray-500">
+                                                <div className="text-sm text-soft">
                                                     {result.subtitle}
                                                 </div>
                                             </div>
-                                            <span className="rounded-full border px-2 py-1 text-xs text-gray-500">
+                                            <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
                                                 {resultTypeLabel[result.type]}
                                             </span>
                                         </button>
                                     ))}
                                 </div>
                             ) : (
-                                <div className="px-4 py-8 text-center text-sm text-gray-500">
+                                <div className="px-4 py-8 text-center text-sm text-soft">
                                     {helperText}
                                 </div>
                             )}

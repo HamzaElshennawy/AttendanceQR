@@ -14,7 +14,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+    Card,
+    CardContent,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -42,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import {
     ArrowLeft,
+    ChevronRight,
     Plus,
     Download,
     Upload,
@@ -55,6 +59,9 @@ import {
     Pencil,
     MapPin,
     RefreshCw,
+    Mail,
+    ShieldCheck,
+    UserRoundCheck,
 } from "lucide-react";
 import { CourseworkGroupPanel } from "@/components/CourseworkGroupPanel";
 import { readSpreadsheetFile } from "@/lib/spreadsheet";
@@ -1086,53 +1093,141 @@ export default function GroupDetailPage() {
             student.university_id.toLowerCase().includes(query)
         );
     });
+    const liveSessions = sessions.filter((session) => session.is_active).length;
 
     return (
-        <div>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
-                <Button
-                    variant="ghost"
-                    size="icon"
+        <div className="space-y-6">
+            <nav
+                aria-label="Breadcrumb"
+                className="flex flex-wrap items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+            >
+                <button
+                    type="button"
                     onClick={() => router.push("/dashboard")}
+                    className="transition-colors hover:text-primary"
                 >
-                    <ArrowLeft className="h-5 w-5" />
-                </Button>
-                <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-bold text-gray-900">
-                            {group.name}
-                        </h1>
-                        {isOwner && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-gray-400 hover:text-gray-600"
-                                onClick={() => {
-                                    setNewGroupName(group.name);
-                                    setRenameOpen(true);
-                                }}
-                            >
-                                <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                        )}
-                        <Badge
-                            variant="outline"
-                            className={
-                                isOwner
-                                    ? "border-emerald-200 text-emerald-700"
-                                    : "border-amber-200 text-amber-700"
-                            }
-                        >
-                            {isOwner ? "Owner" : "TA"}
-                        </Badge>
+                    Dashboard
+                </button>
+                <ChevronRight className="h-3.5 w-3.5 opacity-50" />
+                <span className="text-foreground">{group.name}</span>
+            </nav>
+
+            <section className="space-y-5">
+                <div className="flex items-start gap-3">
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        className="mt-1 shrink-0"
+                        onClick={() => router.push("/dashboard")}
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <div className="flex-1 space-y-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Badge
+                                        variant={isOwner ? "success" : "warning"}
+                                    >
+                                        {isOwner ? "Owner" : "TA"}
+                                    </Badge>
+                                    {liveSessions > 0 && (
+                                        <Badge variant="default">
+                                            {liveSessions} live{" "}
+                                            {liveSessions === 1
+                                                ? "session"
+                                                : "sessions"}
+                                        </Badge>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h1 className="text-[2rem] leading-tight text-foreground">
+                                        {group.name}
+                                    </h1>
+                                    {isOwner && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => {
+                                                setNewGroupName(group.name);
+                                                setRenameOpen(true);
+                                            }}
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </div>
+                                <p className="max-w-3xl text-sm text-soft">
+                                    Central workspace for attendance sessions,
+                                    student roster management, coursework, and
+                                    team collaboration.
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background/85 px-4 py-3 text-sm text-soft">
+                                {students.length} students · {sessions.length}{" "}
+                                sessions · {team.length} team members
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            <Card className="py-0">
+                                <CardContent className="p-5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                        Students
+                                    </p>
+                                    <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground">
+                                        {students.length}
+                                    </div>
+                                    <p className="mt-2 text-sm text-soft">
+                                        Enrolled and ready for attendance
+                                        tracking.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card className="py-0">
+                                <CardContent className="p-5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                        Sessions
+                                    </p>
+                                    <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground">
+                                        {sessions.length}
+                                    </div>
+                                    <p className="mt-2 text-sm text-soft">
+                                        Active and historical attendance sessions.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card className="py-0">
+                                <CardContent className="p-5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                        Live now
+                                    </p>
+                                    <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground">
+                                        {liveSessions}
+                                    </div>
+                                    <p className="mt-2 text-sm text-soft">
+                                        Sessions currently open for student check-in.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card className="py-0">
+                                <CardContent className="p-5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                        Team access
+                                    </p>
+                                    <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground">
+                                        {team.length}
+                                    </div>
+                                    <p className="mt-2 text-sm text-soft">
+                                        Owners and TAs supporting this group.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
                     </div>
-                    <p className="text-gray-500 text-sm">
-                        {students.length} students · {sessions.length} sessions
-                        · {team.length} team members
-                    </p>
                 </div>
-            </div>
+            </section>
 
             {/* Rename Dialog */}
             <Dialog
@@ -1182,11 +1277,21 @@ export default function GroupDetailPage() {
                 defaultValue="sessions"
                 className="space-y-6"
             >
-                <TabsList>
-                    <TabsTrigger value="sessions">Sessions</TabsTrigger>
-                    <TabsTrigger value="coursework">Coursework</TabsTrigger>
-                    <TabsTrigger value="students">Students</TabsTrigger>
-                    <TabsTrigger value="team">Team</TabsTrigger>
+                <TabsList
+                    className="w-full justify-start rounded-2xl border border-border/70 bg-background/80 p-1"
+                >
+                    <TabsTrigger value="sessions">
+                        Sessions
+                    </TabsTrigger>
+                    <TabsTrigger value="coursework">
+                        Coursework
+                    </TabsTrigger>
+                    <TabsTrigger value="students">
+                        Students
+                    </TabsTrigger>
+                    <TabsTrigger value="team">
+                        Team
+                    </TabsTrigger>
                 </TabsList>
 
                 {/* Sessions Tab */}
@@ -1194,7 +1299,17 @@ export default function GroupDetailPage() {
                     value="sessions"
                     className="space-y-4"
                 >
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-transparent p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                Sessions
+                            </h2>
+                            <p className="text-sm text-soft">
+                                Start live attendance, import historical records,
+                                or review previous sessions.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
                         <Dialog
                             open={attendanceImportOpen}
                             onOpenChange={(open) => {
@@ -1975,13 +2090,14 @@ export default function GroupDetailPage() {
                                 </form>
                             </DialogContent>
                         </Dialog>
+                        </div>
                     </div>
 
                     {sessions.length === 0 ? (
-                        <Card className="border-dashed">
+                        <Card className="border-dashed border-primary/20 bg-gradient-to-br from-background via-background to-primary/6">
                             <CardContent className="flex flex-col items-center justify-center py-12">
-                                <Clock className="h-12 w-12 text-gray-300 mb-3" />
-                                <p className="text-gray-500">
+                                <Clock className="mb-4 h-12 w-12 text-primary/45" />
+                                <p className="text-sm text-soft">
                                     No sessions yet. Start one to take
                                     attendance.
                                 </p>
@@ -1992,7 +2108,7 @@ export default function GroupDetailPage() {
                             {sessions.map((session) => (
                                 <Card
                                     key={session.id}
-                                    className="cursor-pointer hover:shadow-md transition-shadow group"
+                                    className="group cursor-pointer transition-transform duration-200 hover:-translate-y-0.5"
                                     onClick={() =>
                                         session.is_active
                                             ? router.push(
@@ -2006,21 +2122,21 @@ export default function GroupDetailPage() {
                                     <CardContent className="flex items-center justify-between py-4">
                                         <div className="flex items-center gap-4">
                                             <div
-                                                className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                                                className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
                                                     session.is_active
-                                                        ? "bg-green-100"
-                                                        : "bg-gray-100"
+                                                        ? "bg-[var(--status-success-soft)]"
+                                                        : "bg-secondary"
                                                 }`}
                                             >
                                                 {session.is_active ? (
-                                                    <Play className="h-5 w-5 text-green-600" />
+                                                    <Play className="h-5 w-5 text-[color:var(--status-success)]" />
                                                 ) : (
-                                                    <Clock className="h-5 w-5 text-gray-400" />
+                                                    <Clock className="h-5 w-5 text-subtle" />
                                                 )}
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-medium text-gray-900">
+                                                    <p className="font-medium text-foreground">
                                                         {session.title ||
                                                             "Untitled Session"}
                                                     </p>
@@ -2039,10 +2155,10 @@ export default function GroupDetailPage() {
                                                         }
                                                     </Badge>
                                                     {session.latitude && (
-                                                        <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                                                        <MapPin className="h-3.5 w-3.5 text-primary" />
                                                     )}
                                                 </div>
-                                                <p className="text-sm text-gray-500">
+                                                <p className="text-sm text-soft">
                                                     {new Date(
                                                         session.started_at,
                                                     ).toLocaleDateString(
@@ -2060,16 +2176,16 @@ export default function GroupDetailPage() {
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <div className="text-right">
-                                                <p className="text-sm font-medium text-gray-700">
+                                                <p className="text-sm font-medium text-foreground">
                                                     {session.attendance_count} /{" "}
                                                     {students.length}
                                                 </p>
-                                                <p className="text-xs text-gray-400">
+                                                <p className="text-xs text-subtle">
                                                     attended
                                                 </p>
                                             </div>
                                             {session.is_active ? (
-                                                <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                                                <Badge variant="success">
                                                     Live
                                                 </Badge>
                                             ) : (
@@ -2080,7 +2196,7 @@ export default function GroupDetailPage() {
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-600"
+                                                className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
                                                 onClick={(e) =>
                                                     handleDeleteSession(
                                                         session.id,
@@ -2101,7 +2217,7 @@ export default function GroupDetailPage() {
                 {/* Students Tab */}
                 <TabsContent
                     value="coursework"
-                    className="space-y-4"
+                    className="space-y-5"
                 >
                     <CourseworkGroupPanel
                         groupId={groupId}
@@ -2112,19 +2228,51 @@ export default function GroupDetailPage() {
 
                 <TabsContent
                     value="students"
-                    className="space-y-4"
+                    className="space-y-5"
                 >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="w-full sm:max-w-sm">
-                            <Input
-                                value={studentSearch}
-                                onChange={(e) =>
-                                    setStudentSearch(e.target.value)
-                                }
-                                placeholder="Search students by name or ID"
-                            />
-                        </div>
-                        <div className="flex justify-end gap-2">
+                    <div className="space-y-5 rounded-[28px] border border-border/70 bg-transparent p-5 sm:p-6">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="space-y-3">
+                                    <Badge
+                                        variant="outline"
+                                        className="w-fit border-primary/20 bg-primary/5 text-primary"
+                                    >
+                                        Student workspace
+                                    </Badge>
+                                    <div className="space-y-1.5">
+                                        <h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                            Students
+                                        </h2>
+                                        <p className="max-w-2xl text-sm leading-6 text-soft">
+                                            Search, import, edit, and review
+                                            individual student history from one
+                                            place.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Badge variant="secondary">
+                                        {students.length} enrolled
+                                    </Badge>
+                                    <Badge variant="outline">
+                                        {filteredStudents.length} visible
+                                    </Badge>
+                                </div>
+                            </div>
+                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                                <div className="space-y-2">
+                                    <Label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                        Find a student
+                                    </Label>
+                                    <Input
+                                        value={studentSearch}
+                                        onChange={(e) =>
+                                            setStudentSearch(e.target.value)
+                                        }
+                                        placeholder="Search students by name or ID"
+                                    />
+                                </div>
+                                <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                         {/* CSV Upload */}
                         <Dialog
                             open={csvOpen}
@@ -2467,266 +2615,387 @@ export default function GroupDetailPage() {
                                 </form>
                             </DialogContent>
                         </Dialog>
-                        </div>
+                                </div>
+                            </div>
                     </div>
 
                     {students.length === 0 ? (
-                        <Card className="border-dashed">
+                        <Card className="border-dashed border-primary/20 bg-gradient-to-br from-background via-background to-primary/6">
                             <CardContent className="flex flex-col items-center justify-center py-12">
-                                <Users className="h-12 w-12 text-gray-300 mb-3" />
-                                <p className="text-gray-500">
+                                <Users className="mb-4 h-12 w-12 text-primary/45" />
+                                <p className="text-sm text-soft">
                                     No students yet. Add students manually or
                                     import from CSV.
                                 </p>
                             </CardContent>
                         </Card>
                     ) : filteredStudents.length === 0 ? (
-                        <Card className="border-dashed">
+                        <Card className="border-dashed border-border/70">
                             <CardContent className="flex flex-col items-center justify-center py-12">
-                                <Users className="h-12 w-12 text-gray-300 mb-3" />
-                                <p className="text-gray-500">
+                                <Users className="mb-4 h-12 w-12 text-subtle" />
+                                <p className="text-sm text-soft">
                                     No students match your search.
                                 </p>
                             </CardContent>
                         </Card>
                     ) : (
-                        <div className="border rounded-lg overflow-hidden">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>University ID</TableHead>
-                                        <TableHead className="w-32">
-                                            History
-                                        </TableHead>
-                                        <TableHead className="w-24"></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredStudents.map((student) => (
-                                        <TableRow key={student.id}>
-                                            <TableCell className="font-medium">
-                                                {student.name}
-                                            </TableCell>
-                                            <TableCell>
-                                                {student.university_id}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        router.push(
-                                                            `/dashboard/groups/${groupId}/students/${student.id}`,
-                                                        )
-                                                    }
-                                                >
-                                                    View History
-                                                </Button>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-gray-400 hover:text-blue-600"
-                                                        onClick={() => {
-                                                            setEditStudent(
-                                                                student,
-                                                            );
-                                                            setEditStudentName(
-                                                                student.name,
-                                                            );
-                                                            setEditStudentId(
-                                                                student.university_id,
-                                                            );
-                                                            setEditStudentOpen(
-                                                                true,
-                                                            );
-                                                        }}
-                                                    >
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-gray-400 hover:text-red-600"
-                                                        onClick={() =>
-                                                            handleDeleteStudent(
-                                                                student.id,
-                                                            )
-                                                        }
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
+                        <Card className="overflow-hidden border-border/70 bg-background/96 shadow-[0_22px_56px_-44px_rgba(22,47,95,0.18)]">
+                            <div className="flex flex-col gap-2 border-b border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-foreground">
+                                        Student register
+                                    </p>
+                                    <p className="text-sm text-soft">
+                                        Open a student to review attendance and
+                                        coursework history.
+                                    </p>
+                                </div>
+                                <Badge variant="outline" className="w-fit">
+                                    {filteredStudents.length} records
+                                </Badge>
+                            </div>
+                            <div className="overflow-hidden rounded-b-[28px]">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Name</TableHead>
+                                            <TableHead>University ID</TableHead>
+                                            <TableHead className="w-24 text-right">
+                                                Action
+                                            </TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredStudents.map((student) => (
+                                            <TableRow
+                                                key={student.id}
+                                                className="cursor-pointer"
+                                                onClick={() =>
+                                                    router.push(
+                                                        `/dashboard/groups/${groupId}/students/${student.id}`,
+                                                    )
+                                                }
+                                            >
+                                                <TableCell className="font-medium">
+                                                    {student.name}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {student.university_id}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                setEditStudent(
+                                                                    student,
+                                                                );
+                                                                setEditStudentName(
+                                                                    student.name,
+                                                                );
+                                                                setEditStudentId(
+                                                                    student.university_id,
+                                                                );
+                                                                setEditStudentOpen(
+                                                                    true,
+                                                                );
+                                                            }}
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                handleDeleteStudent(
+                                                                    student.id,
+                                                                );
+                                                            }}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </Card>
                     )}
                 </TabsContent>
 
                 <TabsContent
                     value="team"
-                    className="space-y-4"
+                    className="space-y-5"
                 >
-                    <div className="flex items-center justify-between rounded-lg border bg-white p-4">
-                        <div>
-                            <h3 className="font-semibold text-gray-900">
-                                Shared Access
-                            </h3>
-                            <p className="text-sm text-gray-500">
-                                Owners can manage members. TAs can manage
-                                students, sessions, and attendance overrides.
-                            </p>
-                        </div>
-                        {isOwner && (
-                            <Dialog
-                                open={teamOpen}
-                                onOpenChange={setTeamOpen}
-                            >
-                                <DialogTrigger asChild>
-                                    <Button>
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        Add Member
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                    <form onSubmit={handleAddMember}>
-                                        <DialogHeader>
-                                            <DialogTitle>
-                                                Add Team Member
-                                            </DialogTitle>
-                                        </DialogHeader>
-                                        <div className="space-y-4 py-4">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="memberEmail">
-                                                    Account Email
-                                                </Label>
-                                                <Input
-                                                    id="memberEmail"
-                                                    type="email"
-                                                    placeholder="ta@university.edu"
-                                                    value={memberEmail}
-                                                    onChange={(e) =>
-                                                        setMemberEmail(
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    required
-                                                />
-                                                <p className="text-xs text-gray-500">
-                                                    The member must already have
-                                                    a Quorum account.
-                                                </p>
+                    <Card className="border-border/70 bg-background/80">
+                        <CardContent className="space-y-5 p-5 sm:p-6">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="space-y-3">
+                                    <Badge
+                                        variant="outline"
+                                        className="w-fit border-primary/20 bg-primary/5 text-primary"
+                                    >
+                                        Team workspace
+                                    </Badge>
+                                    <div className="space-y-1.5">
+                                        <h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                            Team access
+                                        </h2>
+                                        <p className="max-w-2xl text-sm leading-6 text-soft">
+                                            Invite teaching assistants or
+                                            shared owners and keep permissions
+                                            easy to review at a glance.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Badge variant="secondary" className="w-fit">
+                                    {team.length} members
+                                </Badge>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,24rem)]">
+                        <Card className="border-border/70 bg-background/90">
+                            <CardContent className="space-y-5 p-5 sm:p-6">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                            Team access
+                                        </h3>
+                                        <p className="mt-1 text-sm text-soft">
+                                            Invite teaching assistants or shared
+                                            owners and keep permissions easy to
+                                            review at a glance.
+                                        </p>
+                                    </div>
+                                    <Badge variant="outline">
+                                        {team.length} members
+                                    </Badge>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <div className="rounded-2xl border border-border/70 bg-transparent p-4">
+                                        <div className="mb-3 flex items-center gap-2 text-primary">
+                                            <ShieldCheck className="h-4 w-4" />
+                                            <span className="text-[11px] font-semibold uppercase tracking-[0.08em]">
+                                                Shared owner
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-soft">
+                                            Full control over members, sessions,
+                                            students, and grading workflows.
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-border/70 bg-transparent p-4">
+                                        <div className="mb-3 flex items-center gap-2 text-primary">
+                                            <UserRoundCheck className="h-4 w-4" />
+                                            <span className="text-[11px] font-semibold uppercase tracking-[0.08em]">
+                                                TA access
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-soft">
+                                            Manage students, sessions, and
+                                            attendance support without changing
+                                            ownership.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {team.map((member) => (
+                                        <div
+                                            key={member.professor_id}
+                                            className="flex items-center justify-between gap-4 rounded-[24px] border border-border/70 bg-background/70 p-4"
+                                        >
+                                            <div className="flex min-w-0 items-center gap-3">
+                                                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                                    <span className="text-sm font-semibold uppercase">
+                                                        {member.name
+                                                            ?.charAt(0)
+                                                            ?.toUpperCase() ||
+                                                            "M"}
+                                                    </span>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-medium text-foreground">
+                                                        {member.name}
+                                                    </p>
+                                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-soft">
+                                                        <Mail className="h-3.5 w-3.5" />
+                                                        <span className="truncate">
+                                                            {member.email}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label>Role</Label>
-                                                <Select
-                                                    value={memberRole}
-                                                    onValueChange={(value) =>
-                                                        setMemberRole(
-                                                            value as
-                                                                | "owner"
-                                                                | "ta",
-                                                        )
+                                            <div className="flex items-center gap-2">
+                                                <Badge
+                                                    variant={
+                                                        member.role === "owner"
+                                                            ? "success"
+                                                            : "warning"
                                                     }
                                                 >
-                                                    <SelectTrigger>
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="ta">
-                                                            TA
-                                                        </SelectItem>
-                                                        <SelectItem value="owner">
-                                                            Shared Owner
-                                                        </SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                                                    {member.role === "owner"
+                                                        ? "Owner"
+                                                        : "TA"}
+                                                </Badge>
+                                                {isOwner &&
+                                                    member.role !== "owner" && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8"
+                                                            onClick={() =>
+                                                                handleRemoveMember(
+                                                                    member.professor_id,
+                                                                )
+                                                            }
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
                                             </div>
                                         </div>
-                                        <DialogFooter>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={() =>
-                                                    setTeamOpen(false)
-                                                }
-                                            >
-                                                Cancel
-                                            </Button>
-                                            <Button
-                                                type="submit"
-                                                disabled={addingMember}
-                                            >
-                                                {addingMember && (
-                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                )}
-                                                Save Access
-                                            </Button>
-                                        </DialogFooter>
-                                    </form>
-                                </DialogContent>
-                            </Dialog>
-                        )}
-                    </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
 
-                    <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Email</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead className="w-24"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {team.map((member) => (
-                                    <TableRow key={member.professor_id}>
-                                        <TableCell className="font-medium">
-                                            {member.name}
-                                        </TableCell>
-                                        <TableCell>{member.email}</TableCell>
-                                        <TableCell>
-                                            <Badge
-                                                variant="outline"
-                                                className={
-                                                    member.role === "owner"
-                                                        ? "border-emerald-200 text-emerald-700"
-                                                        : "border-amber-200 text-amber-700"
-                                                }
-                                            >
-                                                {member.role === "owner"
-                                                    ? "Owner"
-                                                    : "TA"}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            {isOwner &&
-                                                member.role !== "owner" && (
+                        <Card className="surface-elevated border-border/70">
+                            <CardContent className="space-y-4 p-5 sm:p-6">
+                                <Badge variant="warning" className="w-fit">
+                                    Invite & permissions
+                                </Badge>
+                                <div>
+                                    <h3 className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                        Add a team member
+                                    </h3>
+                                    <p className="mt-1 text-sm text-soft">
+                                        Use the existing Quorum account email and
+                                        choose the right level of access for this
+                                        group.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-border/70 bg-transparent p-4">
+                                    <p className="text-sm font-medium text-foreground">
+                                        Access guidance
+                                    </p>
+                                    <p className="mt-2 text-sm text-soft">
+                                        Invite shared owners only when they need
+                                        to manage permissions or group-level
+                                        settings. Use TA for day-to-day support.
+                                    </p>
+                                </div>
+
+                                {isOwner ? (
+                                    <Dialog
+                                        open={teamOpen}
+                                        onOpenChange={setTeamOpen}
+                                    >
+                                        <DialogTrigger asChild>
+                                            <Button className="w-full">
+                                                <Plus className="mr-2 h-4 w-4" />
+                                                Add Member
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <form onSubmit={handleAddMember}>
+                                                <DialogHeader>
+                                                    <DialogTitle>
+                                                        Add Team Member
+                                                    </DialogTitle>
+                                                </DialogHeader>
+                                                <div className="space-y-4 py-4">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="memberEmail">
+                                                            Account Email
+                                                        </Label>
+                                                        <Input
+                                                            id="memberEmail"
+                                                            type="email"
+                                                            placeholder="ta@university.edu"
+                                                            value={memberEmail}
+                                                            onChange={(e) =>
+                                                                setMemberEmail(
+                                                                    e.target.value,
+                                                                )
+                                                            }
+                                                            required
+                                                        />
+                                                        <p className="text-xs text-soft">
+                                                            The member must
+                                                            already have a Quorum
+                                                            account.
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Role</Label>
+                                                        <Select
+                                                            value={memberRole}
+                                                            onValueChange={(
+                                                                value,
+                                                            ) =>
+                                                                setMemberRole(
+                                                                    value as
+                                                                        | "owner"
+                                                                        | "ta",
+                                                                )
+                                                            }
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="ta">
+                                                                    TA
+                                                                </SelectItem>
+                                                                <SelectItem value="owner">
+                                                                    Shared Owner
+                                                                </SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                                <DialogFooter>
                                                     <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-gray-400 hover:text-red-600"
+                                                        type="button"
+                                                        variant="outline"
                                                         onClick={() =>
-                                                            handleRemoveMember(
-                                                                member.professor_id,
-                                                            )
+                                                            setTeamOpen(false)
                                                         }
                                                     >
-                                                        <Trash2 className="h-4 w-4" />
+                                                        Cancel
                                                     </Button>
-                                                )}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                                    <Button
+                                                        type="submit"
+                                                        disabled={addingMember}
+                                                    >
+                                                        {addingMember && (
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        )}
+                                                        Save Access
+                                                    </Button>
+                                                </DialogFooter>
+                                            </form>
+                                        </DialogContent>
+                                    </Dialog>
+                                ) : (
+                                    <div className="rounded-2xl border border-dashed border-border/70 bg-transparent p-4 text-sm text-soft">
+                                        Only owners can invite or remove team
+                                        members for this group.
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
                     </div>
                 </TabsContent>
             </Tabs>

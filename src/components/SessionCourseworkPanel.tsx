@@ -52,7 +52,7 @@ interface Student {
     university_id: string;
 }
 
-interface AssessmentRow extends Omit<CourseworkAssessment, "session"> {}
+type AssessmentRow = Omit<CourseworkAssessment, "session">;
 
 interface GradeSummaryRow {
     assessment_id: string;
@@ -154,7 +154,10 @@ export function SessionCourseworkPanel({
     }, [groupId, sessionId, supabase]);
 
     useEffect(() => {
-        void loadAssessments();
+        const timeout = window.setTimeout(() => {
+            void loadAssessments();
+        }, 0);
+        return () => window.clearTimeout(timeout);
     }, [loadAssessments]);
 
     const totalGradedEntries = useMemo(
@@ -356,37 +359,35 @@ export function SessionCourseworkPanel({
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-5">
             <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="text-sm text-gray-500">Session Items</div>
-                    <div className="mt-1 text-2xl font-bold text-gray-900">
+                <div className="rounded-[24px] border border-border/70 bg-card px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Session items</div>
+                    <div className="mt-3 text-3xl font-semibold text-foreground">
                         {assessments.length}
                     </div>
                 </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="text-sm text-gray-500">Graded Entries</div>
-                    <div className="mt-1 text-2xl font-bold text-gray-900">
+                <div className="rounded-[24px] border border-border/70 bg-card px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Graded entries</div>
+                    <div className="mt-3 text-3xl font-semibold text-foreground">
                         {totalGradedEntries}
                     </div>
                 </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="text-sm text-gray-500">Session Track</div>
-                    <div className="mt-1 text-2xl font-bold text-gray-900">
+                <div className="rounded-[24px] border border-border/70 bg-card px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Session track</div>
+                    <div className="mt-3 text-3xl font-semibold text-foreground">
                         {sessionCategory === "lecture" ? "Lecture" : "Tutorial"}
                     </div>
                 </div>
             </div>
 
-            <div className="flex items-start justify-between gap-4 rounded-lg border bg-white p-4">
+            <div className="flex items-start justify-between gap-4 rounded-[28px] border border-border/70 bg-card p-5 shadow-sm">
                 <div>
-                    <h3 className="font-semibold text-gray-900">
-                        Session Grade Upload
+                    <h3 className="font-semibold text-foreground">
+                        Session grade upload
                     </h3>
-                    <p className="text-sm text-gray-500">
-                        Upload Excel or CSV for {sessionTitle || "this session"}.
-                        Each selected numeric column becomes a separate coursework
-                        item linked to this session.
+                    <p className="text-sm leading-7 text-muted-foreground">
+                        Upload Excel or CSV for {sessionTitle || "this session"}. Each selected numeric column becomes a separate coursework item linked to this session.
                     </p>
                 </div>
                 <Dialog
@@ -404,7 +405,7 @@ export function SessionCourseworkPanel({
                             Upload Sheet
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-4xl">
+                    <DialogContent className="max-w-4xl border-border/70 bg-background">
                         <DialogHeader>
                             <DialogTitle>Import Session Coursework</DialogTitle>
                         </DialogHeader>
@@ -445,13 +446,13 @@ export function SessionCourseworkPanel({
                                         </Select>
                                     </div>
 
-                                    <div className="rounded-lg border">
-                                        <div className="border-b px-4 py-3 text-sm font-medium text-gray-700">
+                                    <div className="rounded-[24px] border border-border/70 bg-card">
+                                        <div className="border-b border-border/70 px-4 py-3 text-sm font-medium text-foreground">
                                             Imported columns
                                         </div>
-                                        <div className="max-h-[40vh] overflow-auto">
+                                        <div className="max-h-[40vh] overflow-auto rounded-b-[24px]">
                                             <table className="w-full text-sm">
-                                                <thead className="sticky top-0 bg-white">
+                                                <thead className="sticky top-0 bg-background">
                                                     <tr className="border-b">
                                                         <th className="px-4 py-3 text-left">
                                                             Source Column
@@ -474,7 +475,7 @@ export function SessionCourseworkPanel({
                                                                 key={config.sourceHeader}
                                                                 className="border-b last:border-b-0"
                                                             >
-                                                                <td className="px-4 py-3 font-medium text-gray-900">
+                                                                <td className="px-4 py-3 font-medium text-foreground">
                                                                     {config.sourceHeader}
                                                                 </td>
                                                                 <td className="px-4 py-3">
@@ -630,19 +631,19 @@ export function SessionCourseworkPanel({
                 </Dialog>
             </div>
 
-            <div className="overflow-hidden rounded-lg border bg-white">
+            <div className="overflow-hidden rounded-[28px] border border-border/70 bg-card shadow-sm">
                 {loading ? (
                     <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
                 ) : assessments.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                        <FileSpreadsheet className="h-10 w-10 text-gray-300" />
+                        <FileSpreadsheet className="h-10 w-10 text-muted-foreground/50" />
                         <div>
-                            <p className="font-medium text-gray-900">
+                            <p className="font-medium text-foreground">
                                 No session coursework yet
                             </p>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-muted-foreground">
                                 Upload a grade sheet for this lecture or
                                 tutorial, then manage the imported items here.
                             </p>
@@ -670,10 +671,10 @@ export function SessionCourseworkPanel({
                                 return (
                                     <TableRow key={assessment.id}>
                                         <TableCell>
-                                            <div className="font-medium text-gray-900">
+                                            <div className="font-medium text-foreground">
                                                 {assessment.title}
                                             </div>
-                                            <div className="text-xs text-gray-500">
+                                            <div className="text-xs text-muted-foreground">
                                                 {new Date(
                                                     assessment.assessment_date,
                                                 ).toLocaleDateString("en-US")}

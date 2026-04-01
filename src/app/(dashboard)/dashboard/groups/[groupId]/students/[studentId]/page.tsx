@@ -25,11 +25,17 @@ import {
 import {
     ArrowLeft,
     AlertTriangle,
+    BookOpenCheck,
+    CalendarClock,
     CheckCircle2,
+    ChevronRight,
     Clock,
     FilePenLine,
+    GraduationCap,
     Loader2,
     ShieldAlert,
+    Sparkles,
+    TrendingUp,
     XCircle,
 } from "lucide-react";
 import {
@@ -49,6 +55,11 @@ interface Student {
     id: string;
     name: string;
     university_id: string;
+}
+
+interface GroupSummary {
+    id: string;
+    name: string;
 }
 
 interface Session {
@@ -113,6 +124,7 @@ export default function StudentHistoryPage() {
     const supabase = createClient();
 
     const [student, setStudent] = useState<Student | null>(null);
+    const [group, setGroup] = useState<GroupSummary | null>(null);
     const [sessions, setSessions] = useState<Session[]>([]);
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
@@ -141,6 +153,7 @@ export default function StudentHistoryPage() {
         }
 
         const [
+            { data: groupData },
             { data: sessionsData },
             { data: attendanceData },
             { data: gradingSettingsData },
@@ -148,6 +161,11 @@ export default function StudentHistoryPage() {
             { data: breakdownData },
         ] =
             await Promise.all([
+                supabase
+                    .from("groups")
+                    .select("id, name")
+                    .eq("id", groupId)
+                    .maybeSingle(),
                 supabase
                     .from("sessions")
                     .select("id, title, category, started_at, is_active")
@@ -193,6 +211,7 @@ export default function StudentHistoryPage() {
                 : { data: [] as Violation[] };
 
         setStudent(studentData);
+        setGroup(groupData || null);
         setSessions(sessionsData || []);
         setAttendance(attendanceData || []);
         setGradingSettings(normalizeGradingSettings(gradingSettingsData));
@@ -248,6 +267,10 @@ export default function StudentHistoryPage() {
         (record) => record.status === "excused",
     ).length;
     const totalSessions = endedSessions.length;
+    const attendedSessions = presentCount + lateCount + excusedCount;
+    const absentCount = Math.max(totalSessions - attendedSessions, 0);
+    const attendanceRate =
+        totalSessions > 0 ? Math.round((attendedSessions / totalSessions) * 100) : 0;
     const overallGradeTotal = endedSessions.reduce((sum, session) => {
         const record = attendanceBySession.get(session.id);
         return (
@@ -359,142 +382,312 @@ export default function StudentHistoryPage() {
             ? "Manual overrides or excuses recorded"
             : null,
     ].filter(Boolean) as string[];
+    const profileStatus =
+        riskFlags.length > 0
+            ? {
+                  label: "Needs attention",
+                  className:
+                      "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-50",
+              }
+            : {
+                  label: "On track",
+                  className:
+                      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
+              };
+    const performanceCards = [
+        {
+            label: "Attendance coverage",
+            value: `${attendanceRate}%`,
+            detail:
+                totalSessions > 0
+                    ? `${attendedSessions} recorded out of ${totalSessions} completed sessions`
+                    : "No completed sessions yet",
+            icon: CalendarClock,
+        },
+        {
+            label: "Overall attendance grade",
+            value: formatGrade(overallGradeAverage),
+            detail: "Combined lecture and tutorial attendance standing",
+            icon: TrendingUp,
+        },
+        {
+            label: "Weighted coursework",
+            value: `${formatCourseworkScore(weightedCoursework.totalWeightedScore)} / ${formatCourseworkScore(weightedCoursework.maxWeightedScore)}`,
+            detail: `Raw coursework ${formatCourseworkScore(courseworkTotal)} / ${formatCourseworkScore(courseworkMaxTotal)}`,
+            icon: GraduationCap,
+        },
+        {
+            label: "Recorded violations",
+            value: `${violations.length}`,
+            detail:
+                violations.length > 0
+                    ? "Review anomaly and misconduct records"
+                    : "No violation records for this student",
+            icon: ShieldAlert,
+        },
+    ];
+    const attendanceBreakdown = [
+        {
+            label: "Present",
+            value: presentCount,
+            className: "border-emerald-200 bg-emerald-50/80 text-emerald-700",
+            icon: CheckCircle2,
+        },
+        {
+            label: "Late",
+            value: lateCount,
+            className: "border-amber-200 bg-amber-50/80 text-amber-700",
+            icon: Clock,
+        },
+        {
+            label: "Excused",
+            value: excusedCount,
+            className: "border-sky-200 bg-sky-50/80 text-sky-700",
+            icon: FilePenLine,
+        },
+        {
+            label: "Absent",
+            value: absentCount,
+            className: "border-slate-200 bg-slate-50 text-slate-700",
+            icon: XCircle,
+        },
+    ];
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center gap-3">
+            <div className="space-y-3">
+                <nav
+                    aria-label="Breadcrumb"
+                    className="flex flex-wrap items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                >
+                    <button
+                        type="button"
+                        onClick={() => router.push("/dashboard")}
+                        className="transition-colors hover:text-primary"
+                    >
+                        Dashboard
+                    </button>
+                    <ChevronRight className="h-3.5 w-3.5 opacity-50" />
+                    <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/groups/${groupId}`)}
+                        className="transition-colors hover:text-primary"
+                    >
+                        {group?.name || "Group"}
+                    </button>
+                    <ChevronRight className="h-3.5 w-3.5 opacity-50" />
+                    <span className="text-foreground">{student.name}</span>
+                </nav>
+
+                <div>
                 <Button
                     variant="ghost"
-                    size="icon"
+                    className="h-10 gap-2 rounded-full px-4 text-[0.76rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
                     onClick={() => router.push(`/dashboard/groups/${groupId}`)}
                 >
-                    <ArrowLeft className="h-5 w-5" />
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to group hub
                 </Button>
-                <div className="flex-1">
-                    <h1 className="text-2xl font-bold text-gray-900">
-                        {student.name}
-                    </h1>
-                    <p className="text-sm text-gray-500">
-                        {student.university_id}
-                    </p>
-                </div>
-                {riskFlags.length > 0 ? (
-                    <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
-                        At Risk
-                    </Badge>
-                ) : (
-                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                        Stable
-                    </Badge>
-                )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-7">
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Present
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {presentCount}
-                    </p>
-                </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <FilePenLine className="h-4 w-4" />
-                        Excused
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {excusedCount}
-                    </p>
-                </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <Clock className="h-4 w-4" />
-                        Late
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {lateCount}
-                    </p>
-                </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <XCircle className="h-4 w-4" />
-                        Overall Avg Grade
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {formatGrade(overallGradeAverage)}
-                    </p>
-                </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Lecture Avg Grade
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {formatGrade(lectureGradeAverage)}
-                    </p>
-                </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Tutorial Avg Grade
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {formatGrade(tutorialGradeAverage)}
-                    </p>
-                </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <ShieldAlert className="h-4 w-4" />
-                        Violations
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {violations.length}
-                    </p>
-                </div>
-                <div className="rounded-lg border bg-white p-4">
-                    <div className="mb-1 flex items-center gap-2 text-sm text-gray-500">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Weighted Total
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">
-                        {formatCourseworkScore(weightedCoursework.totalWeightedScore)}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                        / {formatCourseworkScore(weightedCoursework.maxWeightedScore)}
-                    </p>
-                    <p className="mt-2 text-xs text-gray-500">
-                        Raw coursework {formatCourseworkScore(courseworkTotal)} / {formatCourseworkScore(courseworkMaxTotal)}
-                    </p>
                 </div>
             </div>
 
-            <div className="rounded-lg border bg-white p-4">
-                <div className="mb-3 flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <h2 className="font-semibold text-gray-900">Risk Flags</h2>
-                </div>
-                {riskFlags.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                        {riskFlags.map((flag) => (
-                            <Badge
-                                key={flag}
-                                variant="outline"
-                                className="border-amber-200 text-amber-700"
-                            >
-                                {flag}
-                            </Badge>
-                        ))}
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,2.15fr)_minmax(320px,0.85fr)]">
+                <section className="overflow-hidden rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(245,248,252,0.96))] shadow-[0_24px_60px_-42px_rgba(22,47,95,0.36)]">
+                    <div className="border-b border-border/60 px-6 py-5 sm:px-8">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <Badge className="rounded-full border-primary/20 bg-primary/8 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary hover:bg-primary/8">
+                                            Student detail
+                                        </Badge>
+                                        <Badge
+                                            variant="outline"
+                                            className={profileStatus.className}
+                                        >
+                                            {profileStatus.label}
+                                        </Badge>
+                                    </div>
+                                    <div>
+                                        <h1 className="font-display text-3xl text-foreground sm:text-[2.15rem]">
+                                            {student.name}
+                                        </h1>
+                                        <p className="mt-2 text-sm text-muted-foreground">
+                                            University ID {student.university_id}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid w-full gap-3 sm:w-auto sm:min-w-[240px]">
+                                <div className="rounded-2xl border border-primary/12 bg-primary/5 px-4 py-3">
+                                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-primary/80">
+                                        Attendance standing
+                                    </p>
+                                    <p className="mt-2 text-2xl font-semibold text-foreground">
+                                        {attendanceRate}%
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {attendedSessions} of {totalSessions} completed
+                                        sessions recorded
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3">
+                                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        Current profile signal
+                                    </p>
+                                    <p className="mt-2 text-sm text-foreground">
+                                        {riskFlags.length > 0
+                                            ? "Patterns in attendance or violations need a closer review."
+                                            : "Attendance and coursework are tracking normally right now."}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                ) : (
-                    <p className="text-sm text-gray-500">
-                        No immediate attendance risk indicators.
-                    </p>
-                )}
+
+                    <div className="grid gap-4 px-6 py-6 sm:grid-cols-2 sm:px-8">
+                        {performanceCards.map((card) => {
+                            const Icon = card.icon;
+                            return (
+                                <div
+                                    key={card.label}
+                                    className="min-h-[176px] rounded-[24px] border border-border/70 bg-background/88 px-5 py-5"
+                                >
+                                    <div className="flex h-full flex-col">
+                                        <div className="flex items-center gap-3">
+                                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                                <Icon className="h-4 w-4" />
+                                            </span>
+                                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                {card.label}
+                                            </p>
+                                        </div>
+                                        <p className="mt-5 text-[1.85rem] font-semibold tracking-tight text-foreground">
+                                            {card.value}
+                                        </p>
+                                        <p className="mt-auto max-w-[28rem] pt-3 text-sm leading-6 text-muted-foreground">
+                                            {card.detail}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
+
+                <section className="rounded-[28px] border border-border/70 bg-background/96 p-6 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.28)]">
+                    <div className="flex items-center gap-2">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                            <Sparkles className="h-4 w-4" />
+                        </span>
+                        <div>
+                            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                                Student signal
+                            </p>
+                            <h2 className="text-xl font-semibold text-foreground">
+                                Risk review
+                            </h2>
+                        </div>
+                    </div>
+
+                    {riskFlags.length > 0 ? (
+                        <div className="mt-5 space-y-3">
+                            {riskFlags.map((flag) => (
+                                <div
+                                    key={flag}
+                                    className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-700" />
+                                        <p className="text-sm leading-6 text-amber-900">
+                                            {flag}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-4">
+                            <div className="flex items-start gap-3">
+                                <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-700" />
+                                <div>
+                                    <p className="text-sm font-medium text-emerald-900">
+                                        No immediate risk indicators
+                                    </p>
+                                    <p className="mt-1 text-sm leading-6 text-emerald-800/90">
+                                        Attendance, coursework, and violation records do
+                                        not show urgent intervention signals right now.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                        {attendanceBreakdown.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <div
+                                    key={item.label}
+                                    className={`rounded-2xl border px-4 py-4 ${item.className}`}
+                                >
+                                    <div className="flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em]">
+                                        <Icon className="h-4 w-4" />
+                                        {item.label}
+                                    </div>
+                                    <p className="mt-3 text-2xl font-semibold">
+                                        {item.value}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-border/70 bg-muted/30 px-4 py-4">
+                        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            Grade split
+                        </p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <div>
+                                <p className="text-sm text-muted-foreground">
+                                    Lecture average
+                                </p>
+                                <p className="text-xl font-semibold text-foreground">
+                                    {formatGrade(lectureGradeAverage)}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-muted-foreground">
+                                    Tutorial average
+                                </p>
+                                <p className="text-xl font-semibold text-foreground">
+                                    {formatGrade(tutorialGradeAverage)}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
 
-            <div className="border rounded-lg overflow-hidden bg-white">
+            <div className="space-y-6">
+                <section className="rounded-[28px] border border-border/70 bg-background/96 p-6 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    <div className="mb-5 flex items-start justify-between gap-4">
+                        <div>
+                            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                Attendance history
+                            </p>
+                            <h2 className="mt-2 font-display text-2xl text-foreground">
+                                Session record
+                            </h2>
+                            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                                Review attendance status, grading impact, and whether
+                                the record came from QR check-in or a manual adjustment.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-[22px] border border-border/70 bg-background">
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -531,7 +724,7 @@ export default function StudentHistoryPage() {
                                             }
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="text-sm text-gray-500">
+                                    <TableCell className="text-sm text-muted-foreground">
                                         {new Date(
                                             session.started_at,
                                         ).toLocaleDateString("en-US", {
@@ -544,26 +737,26 @@ export default function StudentHistoryPage() {
                                     <TableCell>
                                         {!record ? (
                                             <Badge
-                                                variant="secondary"
-                                                className="text-gray-500"
+                                                variant="outline"
+                                                className="border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-50"
                                             >
                                                 Absent
                                             </Badge>
                                         ) : record.status === "late" ? (
-                                            <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+                                            <Badge className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50">
                                                 Late
                                             </Badge>
                                         ) : record.status === "excused" ? (
-                                            <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+                                            <Badge className="border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50">
                                                 Excused
                                             </Badge>
                                         ) : (
-                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                                            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
                                                 Present
                                             </Badge>
                                         )}
                                     </TableCell>
-                                    <TableCell className="font-medium text-gray-700">
+                                    <TableCell className="font-medium text-foreground">
                                         {formatGrade(
                                             getGradeValue(
                                                 record?.status as
@@ -580,8 +773,8 @@ export default function StudentHistoryPage() {
                                                 className={
                                                     record.recorded_via ===
                                                     "manual"
-                                                        ? "border-blue-200 text-blue-700"
-                                                        : ""
+                                                        ? "border-primary/25 bg-primary/5 text-primary"
+                                                        : "border-border text-muted-foreground"
                                                 }
                                             >
                                                 {record.recorded_via === "manual"
@@ -592,7 +785,7 @@ export default function StudentHistoryPage() {
                                             "—"
                                         )}
                                     </TableCell>
-                                    <TableCell className="text-sm text-gray-500">
+                                    <TableCell className="text-sm text-muted-foreground">
                                         {record?.note || "—"}
                                     </TableCell>
                                 </TableRow>
@@ -602,8 +795,52 @@ export default function StudentHistoryPage() {
                 </Table>
             </div>
 
-            <div className="border rounded-lg overflow-hidden bg-white">
-                <Table>
+                </section>
+
+                <section className="rounded-[28px] border border-border/70 bg-background/96 p-6 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    <div>
+                        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            Coursework standing
+                        </p>
+                        <h2 className="mt-2 font-display text-2xl text-foreground">
+                            Assessment performance
+                        </h2>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                            Keep the weighted total visible while reviewing each
+                            assessment score in context.
+                        </p>
+                    </div>
+
+                    <div className="mt-5 rounded-[24px] border border-primary/12 bg-primary/5 px-5 py-5">
+                        <div className="flex items-start gap-3">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                <BookOpenCheck className="h-4 w-4" />
+                            </span>
+                            <div>
+                                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-primary/80">
+                                    Weighted coursework total
+                                </p>
+                                <p className="mt-2 text-2xl font-semibold text-foreground">
+                                    {formatCourseworkScore(
+                                        weightedCoursework.totalWeightedScore,
+                                    )}{" "}
+                                    <span className="text-base font-medium text-muted-foreground">
+                                        /{" "}
+                                        {formatCourseworkScore(
+                                            weightedCoursework.maxWeightedScore,
+                                        )}
+                                    </span>
+                                </p>
+                                <p className="mt-2 text-sm text-muted-foreground">
+                                    Raw coursework {formatCourseworkScore(courseworkTotal)} /{" "}
+                                    {formatCourseworkScore(courseworkMaxTotal)}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-5 overflow-hidden rounded-[22px] border border-border/70 bg-background">
+                        <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead>Coursework</TableHead>
@@ -618,7 +855,7 @@ export default function StudentHistoryPage() {
                             <TableRow>
                                 <TableCell
                                     colSpan={5}
-                                    className="py-8 text-center text-gray-500"
+                                    className="py-10 text-center text-muted-foreground"
                                 >
                                     No coursework grades yet.
                                 </TableCell>
@@ -653,14 +890,14 @@ export default function StudentHistoryPage() {
                                                 : "Tutorial"
                                             : "General"}
                                     </TableCell>
-                                    <TableCell className="text-sm text-gray-500">
+                                    <TableCell className="text-sm text-muted-foreground">
                                         {row.assessment
                                             ? new Date(
                                                   row.assessment.assessment_date,
                                               ).toLocaleDateString("en-US")
                                             : "—"}
                                     </TableCell>
-                                    <TableCell className="font-medium text-gray-700">
+                                    <TableCell className="font-medium text-foreground">
                                         {formatCourseworkScore(row.score)}
                                         {row.assessment &&
                                             ` / ${formatCourseworkScore(row.assessment.max_score)}`}
@@ -669,7 +906,9 @@ export default function StudentHistoryPage() {
                             ))
                         )}
                     </TableBody>
-                </Table>
+                        </Table>
+                    </div>
+                </section>
             </div>
         </div>
     );

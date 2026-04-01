@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { CourseworkAssessment, SessionCategory } from "@/lib/coursework";
 import { CourseworkBreakdownEditor } from "@/components/coursework/CourseworkBreakdownEditor";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 interface Student {
     id: string;
@@ -100,25 +101,69 @@ export default function CourseworkBreakdownPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <Button asChild variant="ghost" className="mb-2 px-0 text-gray-500 hover:text-gray-900">
-                        <Link href={`/dashboard/groups/${groupId}`}>
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back To Coursework
-                        </Link>
-                    </Button>
-                    <h1 className="text-2xl font-semibold text-gray-900">Coursework Breakdown</h1>
-                    <p className="text-sm text-gray-500">
-                        {group ? `${group.name} weighted grading structure` : "Weighted grading structure"}
-                    </p>
+            <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                    <Link href="/dashboard" className="transition-colors hover:text-primary">
+                        Dashboard
+                    </Link>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <Link href={`/dashboard/groups/${groupId}`} className="transition-colors hover:text-primary">
+                        {group?.name || "Group"}
+                    </Link>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <span className="text-primary">Coursework breakdown</span>
                 </div>
+
+                <Button asChild variant="ghost" className="w-fit px-0 text-muted-foreground hover:text-foreground">
+                    <Link href={`/dashboard/groups/${groupId}`}>
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Back to group hub
+                    </Link>
+                </Button>
             </div>
 
+            <section className="rounded-[30px] border border-border/70 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(245,248,252,0.96))] px-6 py-6 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.3)] md:px-8">
+                <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
+                    <div className="space-y-4">
+                        <Badge variant="outline" className="bg-primary/6 text-primary">
+                            Weighted grading model
+                        </Badge>
+                        <div className="space-y-2">
+                            <h1 className="font-display text-4xl text-foreground">
+                                Coursework breakdown
+                            </h1>
+                            <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
+                                Define how attendance, quizzes, midterms, finals, and grouped coursework
+                                categories contribute to the course total for this group.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="rounded-[24px] border border-border/70 bg-background/90 px-5 py-5 shadow-sm">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                            Group context
+                        </div>
+                        <div className="mt-3 space-y-3">
+                            <div>
+                                <div className="font-medium text-foreground">
+                                    {group?.name || "Group"}
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    {students.length} students, {sessions.length} sessions, {assessments.length} coursework items
+                                </p>
+                            </div>
+                            <div className="rounded-[20px] border border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground">
+                                Changes here affect weighted previews and any exports that depend on the group coursework structure.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {loading ? (
-                <div className="rounded-lg border bg-white p-12">
+                <div className="rounded-[28px] border border-border/70 bg-card p-12">
                     <div className="flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
                 </div>
             ) : (

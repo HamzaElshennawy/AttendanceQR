@@ -23,7 +23,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { useAppDialog } from "@/components/AppDialogProvider";
-import { Loader2, Upload } from "lucide-react";
+import { FileSpreadsheet, Loader2, Upload } from "lucide-react";
 
 interface Student {
     id: string;
@@ -143,6 +143,57 @@ export function AssessmentGradesDialog({
         studentIdColumn,
         students,
     ]);
+
+    const importReady = Boolean(
+        spreadsheetHeaders.length > 0 && studentIdColumn && scoreColumn,
+    );
+
+    const unmatchedImportCount = useMemo(() => {
+        if (!studentIdColumn || !scoreColumn) {
+            return 0;
+        }
+
+        const studentIdIndex = spreadsheetHeaders.indexOf(studentIdColumn);
+        const scoreIndex = spreadsheetHeaders.indexOf(scoreColumn);
+        if (studentIdIndex === -1 || scoreIndex === -1) {
+            return 0;
+        }
+
+        const studentIds = new Set(
+            students.map((student) => student.university_id.trim()),
+        );
+
+        return spreadsheetRows.filter((row) => {
+            const importedId = row[studentIdIndex]?.trim();
+            const importedScore = parseNumericScore(row[scoreIndex]);
+
+            return (
+                Boolean(importedId) &&
+                importedScore !== null &&
+                !studentIds.has(importedId)
+            );
+        }).length;
+    }, [
+        scoreColumn,
+        spreadsheetHeaders,
+        spreadsheetRows,
+        studentIdColumn,
+        students,
+    ]);
+
+    const enteredAverage = useMemo(() => {
+        const scores = students
+            .map((student) => parseNumericScore(draftScores[student.id] || ""))
+            .filter((score): score is number => score !== null);
+
+        if (scores.length === 0) {
+            return null;
+        }
+
+        return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+    }, [draftScores, students]);
+
+    const remainingCount = Math.max(students.length - gradedCount, 0);
 
     const handleUploadFile = async (
         event: React.ChangeEvent<HTMLInputElement>,
@@ -316,183 +367,334 @@ export function AssessmentGradesDialog({
             open={open}
             onOpenChange={onOpenChange}
         >
-            <DialogContent className="w-[96vw] max-w-250! max-h-[94vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>
-                        {assessment?.title || "Manage Grades"}
-                    </DialogTitle>
-                </DialogHeader>
+            <DialogContent className="w-[96vw] max-h-[94vh] max-w-[min(1120px,96vw)] overflow-y-auto p-0">
+                <div className="overflow-hidden rounded-[1.6rem]">
+                    <div className="border-b border-border/60 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(245,248,252,0.96))] px-6 py-5 sm:px-7">
+                        <DialogHeader className="space-y-3 text-left">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span className="inline-flex rounded-full border border-primary/20 bg-primary/8 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary">
+                                    Grade management
+                                </span>
+                                {assessment && (
+                                    <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        Max {formatCourseworkScore(assessment.max_score)}
+                                    </span>
+                                )}
+                            </div>
+                            <DialogTitle className="text-[1.75rem] leading-tight text-foreground">
+                                {assessment?.title || "Manage Grades"}
+                            </DialogTitle>
+                        </DialogHeader>
 
-                {assessment && (
-                    <div className="rounded-lg border bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                        {gradedCount} of {students.length} students graded · Max
-                        Grade {formatCourseworkScore(assessment.max_score)}
+                        <div className="mt-5 grid gap-4 md:grid-cols-3">
+                            <div className="rounded-[22px] border border-border/70 bg-background/88 px-4 py-4">
+                                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    Students graded
+                                </p>
+                                <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+                                    {gradedCount}
+                                </p>
+                                <p className="mt-2 text-sm text-soft">
+                                    {students.length} students available in this assessment.
+                                </p>
+                            </div>
+                            <div className="rounded-[22px] border border-border/70 bg-background/88 px-4 py-4">
+                                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    Average entered
+                                </p>
+                                <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+                                    {enteredAverage !== null
+                                        ? formatCourseworkScore(enteredAverage)
+                                        : "—"}
+                                </p>
+                                <p className="mt-2 text-sm text-soft">
+                                    Live average based on the current draft values.
+                                </p>
+                            </div>
+                            <div className="rounded-[22px] border border-border/70 bg-background/88 px-4 py-4">
+                                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    Spreadsheet matches
+                                </p>
+                                <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+                                    {matchedImportCount}
+                                </p>
+                                <p className="mt-2 text-sm text-soft">
+                                    Rows ready to import from the uploaded sheet.
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                )}
 
-                <div className="rounded-lg border bg-white p-4 space-y-4">
-                    <div>
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                            <Upload className="h-4 w-4" />
-                            Import Grades From Excel Or CSV
-                        </div>
-                        <p className="mt-1 text-sm text-gray-500">
-                            Upload a file, choose the student ID column and the
-                            score column, then import into this assessment.
-                        </p>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <div className="space-y-2">
-                            <Label htmlFor="assessmentSheet">Spreadsheet</Label>
-                            <Input
-                                id="assessmentSheet"
-                                type="file"
-                                accept=".xlsx,.csv"
-                                onChange={handleUploadFile}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Student ID column</Label>
-                            <Select
-                                value={studentIdColumn}
-                                onValueChange={setStudentIdColumn}
-                                disabled={spreadsheetHeaders.length === 0}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select column" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {spreadsheetHeaders.map((header, index) => (
-                                        <SelectItem
-                                            key={`${header}-${index}`}
-                                            value={header}
+                    <div className="grid gap-6 px-6 py-6 sm:px-7 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.82fr)]">
+                        <section className="space-y-4">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                                <div>
+                                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        Grade table
+                                    </p>
+                                    <h3 className="mt-2 text-xl font-semibold text-foreground">
+                                        Enter or review scores
+                                    </h3>
+                                    <p className="mt-2 text-sm leading-6 text-soft">
+                                        Keep the full student roster visible while entering scores manually or after importing them from a spreadsheet.
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        {gradedCount} entered
+                                    </span>
+                                    <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        {remainingCount} remaining
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="overflow-hidden rounded-[24px] border border-border/70 bg-background/96">
+                                {loading ? (
+                                    <div className="flex items-center justify-center py-14">
+                                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                                    </div>
+                                ) : (
+                                    <div className="max-h-[58vh] overflow-auto pb-4">
+                                        <table className="w-full text-sm">
+                                            <thead className="sticky top-0 z-10 bg-background/96 backdrop-blur">
+                                                <tr className="border-b border-border/70">
+                                                    <th className="px-4 py-3 text-left text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                                        Student
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                                        University ID
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                                        Score
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {students.map((student) => (
+                                                    <tr
+                                                        key={student.id}
+                                                        className="border-b border-border/60 last:border-b-0"
+                                                    >
+                                                        <td className="px-4 py-3.5 font-medium text-foreground">
+                                                            {student.name}
+                                                        </td>
+                                                        <td className="px-4 py-3.5 text-muted-foreground">
+                                                            {student.university_id}
+                                                        </td>
+                                                        <td className="px-4 py-3.5">
+                                                            <Input
+                                                                value={draftScores[student.id] || ""}
+                                                                onChange={(event) =>
+                                                                    setDraftScores((current) => ({
+                                                                        ...current,
+                                                                        [student.id]: event.target.value,
+                                                                    }))
+                                                                }
+                                                                placeholder="Leave blank if not graded"
+                                                                inputMode="decimal"
+                                                                className="max-w-[13rem]"
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        <section className="space-y-4">
+                            <div className="rounded-[24px] border border-border/70 bg-background/96 p-5">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                        <Upload className="h-4 w-4" />
+                                    </span>
+                                    <div>
+                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                            Spreadsheet import
+                                        </p>
+                                        <h3 className="mt-1 text-lg font-semibold text-foreground">
+                                            Upload and map grades
+                                        </h3>
+                                    </div>
+                                </div>
+                                <p className="mt-3 text-sm leading-6 text-soft">
+                                    Upload a sheet, choose the student ID and score columns, then import the matched rows into the grading table.
+                                </p>
+
+                                <div className="mt-5 space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="assessmentSheet">Spreadsheet</Label>
+                                        <Input
+                                            id="assessmentSheet"
+                                            type="file"
+                                            accept=".xlsx,.csv"
+                                            onChange={handleUploadFile}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Student ID column</Label>
+                                        <Select
+                                            value={studentIdColumn}
+                                            onValueChange={setStudentIdColumn}
+                                            disabled={spreadsheetHeaders.length === 0}
                                         >
-                                            {header || `Column ${index + 1}`}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Score column</Label>
-                            <Select
-                                value={scoreColumn}
-                                onValueChange={setScoreColumn}
-                                disabled={spreadsheetHeaders.length === 0}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select column" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {spreadsheetHeaders.map((header, index) => (
-                                        <SelectItem
-                                            key={`${header}-${index}-score`}
-                                            value={header}
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select column" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {spreadsheetHeaders.map((header, index) => (
+                                                    <SelectItem
+                                                        key={`${header}-${index}`}
+                                                        value={header}
+                                                    >
+                                                        {header || `Column ${index + 1}`}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Score column</Label>
+                                        <Select
+                                            value={scoreColumn}
+                                            onValueChange={setScoreColumn}
+                                            disabled={spreadsheetHeaders.length === 0}
                                         >
-                                            {header || `Column ${index + 1}`}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select column" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {spreadsheetHeaders.map((header, index) => (
+                                                    <SelectItem
+                                                        key={`${header}-${index}-score`}
+                                                        value={header}
+                                                    >
+                                                        {header || `Column ${index + 1}`}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-4">
+                                        <p className="text-sm font-medium text-foreground">
+                                            Import guidance
+                                        </p>
+                                        <p className="mt-2 text-sm leading-6 text-soft">
+                                            Importing fills matching student rows in the grading table. You can still review or edit every score before saving.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-[24px] border border-border/70 bg-background/96 p-5">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                        <FileSpreadsheet className="h-4 w-4" />
+                                    </span>
+                                    <div>
+                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                            Import status
+                                        </p>
+                                        <h3 className="mt-1 text-lg font-semibold text-foreground">
+                                            Sheet readiness
+                                        </h3>
+                                    </div>
+                                </div>
+
+                                {spreadsheetHeaders.length > 0 ? (
+                                    <div className="mt-4 space-y-4">
+                                        <div className="grid gap-3 sm:grid-cols-3">
+                                            <div className="rounded-2xl border border-border/70 bg-transparent px-4 py-4">
+                                                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                                    Rows loaded
+                                                </p>
+                                                <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                                                    {spreadsheetRows.length}
+                                                </p>
+                                            </div>
+                                            <div className="rounded-2xl border border-border/70 bg-transparent px-4 py-4">
+                                                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                                    Ready to import
+                                                </p>
+                                                <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                                                    {matchedImportCount}
+                                                </p>
+                                            </div>
+                                            <div className="rounded-2xl border border-border/70 bg-transparent px-4 py-4">
+                                                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                                    Ignored rows
+                                                </p>
+                                                <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                                                    {unmatchedImportCount}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="rounded-2xl border border-border/70 bg-transparent px-4 py-4">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                                    ID: {studentIdColumn || "Not selected"}
+                                                </span>
+                                                <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                                    Score: {scoreColumn || "Not selected"}
+                                                </span>
+                                            </div>
+                                            <p className="mt-3 text-sm leading-6 text-soft">
+                                                {matchedImportCount > 0
+                                                    ? `${matchedImportCount} matched rows contain a valid numeric score and can be placed directly into the grading table.`
+                                                    : "Pick the right columns to prepare the matched rows for import."}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="w-full justify-center"
+                                            onClick={handleImportSheet}
+                                            disabled={!importReady}
+                                        >
+                                            Import Into Table
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="mt-4 rounded-2xl border border-dashed border-border/70 bg-transparent px-4 py-5 text-sm text-soft">
+                                        Upload a spreadsheet to preview matched rows and import them into the grading table.
+                                    </div>
+                                )}
+                            </div>
+                        </section>
                     </div>
-                    {spreadsheetHeaders.length > 0 && (
-                        <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                            <span>
-                                {spreadsheetRows.length} rows loaded ·{" "}
-                                {matchedImportCount} matched students
-                            </span>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={handleImportSheet}
-                                disabled={!studentIdColumn || !scoreColumn}
-                            >
-                                Import Into Table
-                            </Button>
-                        </div>
-                    )}
-                </div>
 
-                <div className="max-h-[60vh] overflow-auto rounded-lg border">
-                    {loading ? (
-                        <div className="flex items-center justify-center py-12">
-                            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                    <DialogFooter className="border-t border-border/60 px-6 py-5 sm:px-7">
+                        <div className="flex w-full flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div className="text-sm text-soft">
+                                {gradedCount > 0
+                                    ? `${gradedCount} student${gradedCount === 1 ? "" : "s"} currently have a score ready to save.`
+                                    : "No grades entered yet. Import or type scores before saving."}
+                            </div>
+                            <div className="flex items-center justify-end gap-3">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => onOpenChange(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleSave}
+                                    disabled={saving || loading}
+                                >
+                                    {saving && (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    )}
+                                    Save Grades
+                                </Button>
+                            </div>
                         </div>
-                    ) : (
-                        <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-white">
-                                <tr className="border-b">
-                                    <th className="px-4 py-3 text-left font-medium text-gray-600">
-                                        Student
-                                    </th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-600">
-                                        University ID
-                                    </th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-600">
-                                        Score
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {students.map((student) => (
-                                    <tr
-                                        key={student.id}
-                                        className="border-b last:border-b-0"
-                                    >
-                                        <td className="px-4 py-3 font-medium text-gray-900">
-                                            {student.name}
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-500">
-                                            {student.university_id}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <Input
-                                                value={
-                                                    draftScores[student.id] ||
-                                                    ""
-                                                }
-                                                onChange={(event) =>
-                                                    setDraftScores(
-                                                        (current) => ({
-                                                            ...current,
-                                                            [student.id]:
-                                                                event.target
-                                                                    .value,
-                                                        }),
-                                                    )
-                                                }
-                                                placeholder="Leave blank if not graded"
-                                                inputMode="decimal"
-                                            />
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
+                    </DialogFooter>
                 </div>
-
-                <DialogFooter>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => onOpenChange(false)}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={saving || loading}
-                    >
-                        {saving && (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        )}
-                        Save Grades
-                    </Button>
-                </DialogFooter>
             </DialogContent>
         </Dialog>
     );
