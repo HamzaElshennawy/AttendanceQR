@@ -1,14 +1,100 @@
+
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/server";
 import {
+    ArrowRight,
+    Building2,
+    CheckCircle2,
+    ClipboardCheck,
+    Clock3,
     FileSpreadsheet,
-    Fingerprint,
-    MapPin,
-    Search,
+    GraduationCap,
+    MapPinned,
+    QrCode,
     ShieldCheck,
+    Sparkles,
+    Users,
 } from "lucide-react";
 import { QuorumIcon } from "@/components/QuorumLogo";
+
+const heroStats = [
+    { label: "Attendance check-ins", value: "Seconds" },
+    { label: "Instructor workspace", value: "One place" },
+    { label: "Procurement posture", value: "Institution-ready" },
+];
+
+const featurePillars = [
+    {
+        icon: QrCode,
+        title: "Fast classroom attendance",
+        description:
+            "Run rotating QR attendance with location-aware validation and live session control that stays readable under pressure.",
+    },
+    {
+        icon: ClipboardCheck,
+        title: "Coursework and grading flow",
+        description:
+            "Manage quizzes, assignments, practicals, midterms, and finals with spreadsheet imports, grading breakdowns, and clear review states.",
+    },
+    {
+        icon: Building2,
+        title: "Institutional trust",
+        description:
+            "Present a calmer, procurement-friendly system with clearer controls, safer workflows, and policy-friendly reporting surfaces.",
+    },
+];
+
+const workflowSteps = [
+    {
+        eyebrow: "1. Prepare",
+        title: "Open the teaching workspace",
+        description:
+            "Professors and TAs land in a structured dashboard for groups, sessions, coursework, and student lookup without hunting across disconnected tools.",
+    },
+    {
+        eyebrow: "2. Run live attendance",
+        title: "Launch QR attendance with confidence",
+        description:
+            "Live session controls make attendance visible in real time, while projection-friendly QR mode keeps classroom check-in friction low.",
+    },
+    {
+        eyebrow: "3. Grade and report",
+        title: "Move directly into coursework and exports",
+        description:
+            "Spreadsheet imports, weighted grading, and export-ready records reduce the manual cleanup that usually follows each class or exam cycle.",
+    },
+];
+
+const proofStrip = [
+    "Live QR attendance",
+    "Spreadsheet-friendly grading",
+    "Student review flows",
+    "Department-ready reporting",
+];
+
+const packagePreview = [
+    {
+        name: "Starter",
+        audience: "Single instructor or pilot section",
+        price: "$29",
+        blurb: "Attendance, coursework basics, and lightweight exports for a fast classroom rollout.",
+    },
+    {
+        name: "Department",
+        audience: "Multi-course department teams",
+        price: "$199",
+        blurb: "Shared oversight, exam workflows, richer imports, and cleaner administrative reporting.",
+        featured: true,
+    },
+    {
+        name: "Faculty",
+        audience: "Faculty-wide coordination",
+        price: "Custom",
+        blurb: "Broader governance, onboarding support, and implementation planning for institutional scale.",
+    },
+];
 
 export default async function LandingPage() {
     const supabase = await createClient();
@@ -16,405 +102,329 @@ export default async function LandingPage() {
         data: { session },
     } = await supabase.auth.getSession();
 
-    const isLoggedIn = !!session;
+    const isLoggedIn = Boolean(session);
 
     return (
-        <div className="min-h-screen bg-[#fafafa] text-zinc-900 font-sans selection:bg-zinc-200">
-            {/* Navigation */}
-            <nav className="border-b border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-                <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
-                    <Link
-                        href="/"
-                        className="flex items-center gap-2"
-                    >
-                        <div className="bg-zinc-900 p-1.5 rounded-md">
-                            <QuorumIcon className="h-5 w-5 text-white" />
+        <div className="min-h-screen bg-background text-foreground">
+            <header className="sticky top-0 z-50 border-b border-border/70 bg-background/90 backdrop-blur-xl">
+                <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-6">
+                    <Link href="/" className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-card text-primary shadow-sm">
+                            <QuorumIcon className="h-5 w-5" />
                         </div>
-                        <span className="text-lg font-semibold tracking-tight text-zinc-900">
-                            Quorum
-                        </span>
+                        <div>
+                            <div className="text-lg font-semibold tracking-tight text-foreground">Quorum</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                Academic operations
+                            </div>
+                        </div>
                     </Link>
-                    <div className="flex items-center gap-4 text-sm font-medium">
+
+                    <div className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
+                        <Link href="/pricing" className="transition-colors hover:text-primary">
+                            Pricing
+                        </Link>
+                        <Link href="/login" className="transition-colors hover:text-primary">
+                            Sign in
+                        </Link>
                         {isLoggedIn ? (
-                            <Link href="/dashboard">
-                                <Button
-                                    variant="default"
-                                    className="bg-zinc-900 text-white hover:bg-zinc-800 rounded-full px-6"
-                                >
-                                    Dashboard
-                                </Button>
-                            </Link>
+                            <Button asChild>
+                                <Link href="/dashboard">Open dashboard</Link>
+                            </Button>
                         ) : (
-                            <>
-                                <Link
-                                    href="/login"
-                                    className="text-zinc-600 hover:text-zinc-900 transition-colors"
-                                >
-                                    Sign In
-                                </Link>
-                                <Link href="/register">
-                                    <Button
-                                        variant="default"
-                                        className="bg-zinc-900 text-white hover:bg-zinc-800 rounded-full px-6"
-                                    >
-                                        Start Free
-                                    </Button>
-                                </Link>
-                            </>
+                            <Button asChild>
+                                <Link href="/register">Start free</Link>
+                            </Button>
                         )}
                     </div>
                 </div>
-            </nav>
+            </header>
 
-            {/* Hero Section */}
-            <main className="relative overflow-hidden border-b border-zinc-200 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(250,250,250,0.92)_45%,_rgba(244,244,245,0.95)_100%)]">
-                <div className="pointer-events-none absolute inset-0 opacity-60">
-                    <div className="absolute inset-0 bg-[linear-gradient(rgba(24,24,27,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(24,24,27,0.04)_1px,transparent_1px)] bg-[size:42px_42px]" />
-                    <div className="absolute -left-20 top-16 h-72 w-72 rounded-full bg-stone-200/50 blur-3xl" />
-                    <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-emerald-100/50 blur-3xl" />
-                    <div className="absolute bottom-0 left-1/3 h-56 w-56 rounded-full bg-amber-100/50 blur-3xl" />
-                </div>
-
-                <div className="relative mx-auto grid max-w-7xl gap-14 px-6 py-20 md:grid-cols-[0.95fr_1.05fr] md:items-center md:py-28">
-                    <div className="max-w-xl text-left">
-                        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-zinc-600 shadow-sm">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                            Attendance + Coursework LMS
-                        </div>
-                        <h1 className="text-5xl font-bold tracking-[-0.04em] text-zinc-950 md:text-7xl">
-                            Built for classes,
-                            <span className="block text-zinc-500">
-                                sections, grades, and reports.
-                            </span>
-                        </h1>
-                        <p className="mt-7 text-lg leading-8 text-zinc-600 md:text-xl">
-                            Quorum combines rotating QR attendance, coursework
-                            management, spreadsheet imports, historical
-                            attendance uploads, and export-ready reporting in
-                            one system for professors and TAs.
-                        </p>
-
-                        {/*<div className="mt-10 flex flex-col gap-4 sm:flex-row">*/}
-                        {/*{isLoggedIn ? (
-                                <Link href="/dashboard">
-                                    <Button
-                                        size="lg"
-                                        className="h-12 rounded-full bg-zinc-950 px-8 text-base text-white hover:bg-zinc-800"
-                                    >
-                                        Enter Dashboard
-                                    </Button>
-                                </Link>
-                            ) : (
-                                <>
-                                    <Link href="/register">
-                                        <Button
-                                            size="lg"
-                                            className="h-12 rounded-full bg-zinc-950 px-8 text-base text-white hover:bg-zinc-800"
-                                        >
-                                            Launch Workspace
-                                        </Button>
-                                    </Link>
-                                    <Link href="/login">
-                                        <Button
-                                            size="lg"
-                                            variant="outline"
-                                            className="h-12 rounded-full border-zinc-300 bg-white/80 px-8 text-base text-zinc-700 hover:bg-zinc-50"
-                                        >
-                                            Sign In to Account
-                                        </Button>
-                                    </Link>
-                                </>
-                            )}*/}
-                        {/*</div>*/}
-
-                        <div className="mt-10 grid gap-4 sm:grid-cols-3">
-                            {[
-                                "QR attendance with anti-sharing protection",
-                                "Coursework for quizzes, midterms, finals, and assignments",
-                                "Excel exports with optional attendance totals",
-                            ].map((item) => (
-                                <div
-                                    key={item}
-                                    className="rounded-2xl border border-zinc-200 bg-white/75 p-4 text-sm leading-6 text-zinc-600 shadow-sm backdrop-blur"
-                                >
-                                    {item}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="relative w-full">
-                        <div className="absolute -left-6 top-12 hidden h-32 w-32 rounded-3xl border border-white/70 bg-white/60 blur-sm md:block" />
-                        <div className="relative overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-[0_25px_90px_rgba(24,24,27,0.12)]">
-                            <div className="border-b border-zinc-200 bg-zinc-50 px-5 py-4">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="text-sm font-semibold text-zinc-900">
-                                            Teaching Workspace
-                                        </div>
-                                        <div className="text-xs text-zinc-500">
-                                            Live attendance and coursework
-                                            overview
-                                        </div>
-                                    </div>
-                                    <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-                                        Active
-                                    </div>
-                                </div>
+            <main>
+                <section className="relative overflow-hidden border-b border-border/70">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(205,223,255,0.55),transparent_36%),radial-gradient(circle_at_80%_10%,rgba(247,228,188,0.24),transparent_28%),linear-gradient(180deg,rgba(253,253,255,0.98),rgba(247,250,255,0.96))]" />
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+                    <div className="relative mx-auto grid max-w-7xl gap-10 px-6 py-18 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:py-24">
+                        <div className="space-y-8">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground shadow-sm">
+                                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                                UX-first attendance and coursework system
                             </div>
-
-                            <div className="space-y-5 bg-[linear-gradient(180deg,#ffffff_0%,#fafaf9_100%)] p-5">
-                                <div className="grid gap-4 sm:grid-cols-[1.15fr_0.85fr]">
-                                    <div className="rounded-3xl bg-zinc-950 p-5 text-white">
-                                        <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                                            Session
-                                        </div>
-                                        <div className="mt-3 text-2xl font-semibold">
-                                            Lecture 05
-                                        </div>
-                                        <div className="mt-2 text-sm text-zinc-300">
-                                            Rotating QR enabled with venue
-                                            validation
-                                        </div>
-                                        <div className="mt-6 grid grid-cols-2 gap-3">
-                                            <div className="rounded-2xl bg-white/10 p-3">
-                                                <div className="text-xs text-zinc-400">
-                                                    Checked In
-                                                </div>
-                                                <div className="mt-1 text-xl font-semibold">
-                                                    84
-                                                </div>
-                                            </div>
-                                            <div className="rounded-2xl bg-white/10 p-3">
-                                                <div className="text-xs text-zinc-400">
-                                                    Late
-                                                </div>
-                                                <div className="mt-1 text-xl font-semibold">
-                                                    7
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="rounded-3xl border border-zinc-200 bg-white p-4">
-                                        <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                                            Coursework
-                                        </div>
-                                        <div className="mt-3 space-y-3">
-                                            {[
-                                                ["Quiz 2", "32/40 graded"],
-                                                [
-                                                    "Midterm",
-                                                    "Imported from Excel",
-                                                ],
-                                                [
-                                                    "Attendance",
-                                                    "Included in total",
-                                                ],
-                                            ].map(([title, meta]) => (
-                                                <div
-                                                    key={title}
-                                                    className="rounded-2xl bg-zinc-50 p-3"
-                                                >
-                                                    <div className="text-sm font-medium text-zinc-900">
-                                                        {title}
-                                                    </div>
-                                                    <div className="mt-1 text-xs text-zinc-500">
-                                                        {meta}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="rounded-3xl border border-zinc-200 bg-white p-4">
-                                    <div className="mb-3 flex items-center justify-between">
-                                        <div>
-                                            <div className="text-sm font-semibold text-zinc-900">
-                                                Import + Search Flow
-                                            </div>
-                                            <div className="text-xs text-zinc-500">
-                                                One workspace for rosters,
-                                                grades, and history
-                                            </div>
-                                        </div>
-                                        <div className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-500">
-                                            Ctrl/Cmd + K
-                                        </div>
-                                    </div>
-                                    <div className="grid gap-3 sm:grid-cols-3">
-                                        {[
-                                            ["Students", "Excel / CSV upload"],
-                                            [
-                                                "Attendance",
-                                                "Past sessions import",
-                                            ],
-                                            [
-                                                "Reports",
-                                                "Coursework + attendance export",
-                                            ],
-                                        ].map(([title, desc]) => (
-                                            <div
-                                                key={title}
-                                                className="rounded-2xl bg-zinc-50 p-3"
-                                            >
-                                                <div className="text-sm font-medium text-zinc-900">
-                                                    {title}
-                                                </div>
-                                                <div className="mt-1 text-xs text-zinc-500">
-                                                    {desc}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
-
-            {/* Security Features */}
-            <section className="bg-white border-y border-zinc-200 py-24">
-                <div className="max-w-5xl mx-auto px-6">
-                    <div className="mb-16 text-center">
-                        <h2 className="text-3xl font-bold tracking-tight text-zinc-900">
-                            Secure at the check-in layer
-                        </h2>
-                        <p className="text-zinc-500 mt-4 text-lg">
-                            Attendance integrity is still enforced with rotating
-                            QR tokens, venue-aware validation, and device
-                            protection.
-                        </p>
-                    </div>
-
-                    <div className="grid md:grid-cols-3 gap-12">
-                        {[
-                            {
-                                icon: QuorumIcon,
-                                title: "Dynamic QR Code Rotation",
-                                desc: "Check-in QR Codes refresh continuously. Capturing and sharing screenshots is rendered fundamentally useless.",
-                            },
-                            {
-                                icon: MapPin,
-                                title: "Geofenced Validation",
-                                desc: "Strict location boundaries require attendees to be physically present in the designated venue to successfully authenticate.",
-                            },
-                            {
-                                icon: Fingerprint,
-                                title: "Device Fingerprinting",
-                                desc: "Algorithmic hardware detection prevents identical physical devices from authenticating multiple profiles.",
-                            },
-                        ].map((feature, i) => (
-                            <div
-                                key={i}
-                                className="flex flex-col items-center text-center"
-                            >
-                                <div className="h-12 w-12 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mb-6">
-                                    <feature.icon className="h-5 w-5 text-zinc-900" />
-                                </div>
-                                <h3 className="text-xl font-semibold text-zinc-900 mb-3 tracking-tight">
-                                    {feature.title}
-                                </h3>
-                                <p className="text-zinc-600 leading-relaxed text-sm">
-                                    {feature.desc}
+                            <div className="space-y-5">
+                                <h1 className="max-w-4xl font-display text-5xl leading-none text-foreground sm:text-6xl lg:text-7xl">
+                                    One academic operations workspace for attendance, coursework, and exams.
+                                </h1>
+                                <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
+                                    Quorum helps professors, TAs, departments, and academic operations teams move faster through live sessions, grading imports, student review, and export-ready reporting without giving up clarity.
                                 </p>
                             </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* Platform Features */}
-            <section className="py-24 bg-[#fafafa]">
-                <div className="max-w-5xl mx-auto px-6 flex flex-col md:flex-row items-center gap-16">
-                    <div className="flex-1 space-y-8">
-                        <h2 className="text-3xl font-bold tracking-tight text-zinc-900">
-                            Built for real academic workflow
-                        </h2>
-                        <p className="text-zinc-600 text-md leading-relaxed">
-                            Beyond attendance sessions, Quorum now handles
-                            coursework, historical imports, student tracking,
-                            and export-ready reports for professors and TAs.
-                        </p>
-                        <ul className="space-y-4">
-                            {[
-                                "Separate coursework space for quizzes, assignments, midterms, practicals, and finals",
-                                "Excel and CSV imports for students, assessment grades, and historical attendance",
-                                "Coursework export with optional cumulative attendance added to totals",
-                                "Student search inside groups plus site-wide search across groups, sessions, and coursework",
-                            ].map((item, i) => (
-                                <li
-                                    key={i}
-                                    className="flex items-center gap-3"
-                                >
-                                    <div className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-zinc-900" />
-                                    <span className="text-zinc-700 text-md">
+                            <div className="flex flex-wrap gap-3">
+                                {isLoggedIn ? (
+                                    <Button asChild size="lg" className="h-12 rounded-full px-7">
+                                        <Link href="/dashboard">
+                                            Open dashboard
+                                            <ArrowRight className="ml-2 h-4 w-4" />
+                                        </Link>
+                                    </Button>
+                                ) : (
+                                    <>
+                                        <Button asChild size="lg" className="h-12 rounded-full px-7">
+                                            <Link href="/register">
+                                                Start free
+                                                <ArrowRight className="ml-2 h-4 w-4" />
+                                            </Link>
+                                        </Button>
+                                        <Button asChild size="lg" variant="outline" className="h-12 rounded-full px-7">
+                                            <Link href="/pricing">View pricing</Link>
+                                        </Button>
+                                    </>
+                                )}
+                                <Button asChild size="lg" variant="ghost" className="h-12 rounded-full px-7 text-primary hover:text-primary">
+                                    <a href="mailto:sales@quorum.app">Book a demo</a>
+                                </Button>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                {heroStats.map((item) => (
+                                    <div key={item.label} className="rounded-[22px] border border-border/70 bg-card/90 px-4 py-4 shadow-sm">
+                                        <div className="text-2xl font-semibold text-foreground">{item.value}</div>
+                                        <div className="mt-1 text-sm text-muted-foreground">{item.label}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {proofStrip.map((item) => (
+                                    <div
+                                        key={item}
+                                        className="rounded-full border border-border/70 bg-card/90 px-3 py-2 text-sm text-muted-foreground shadow-sm"
+                                    >
                                         {item}
-                                    </span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                    <div className="flex-1 w-full bg-zinc-100 rounded-3xl border border-zinc-200 aspect-square flex items-center justify-center p-8 shadow-inner shadow-zinc-200/50">
-                        <div className="w-full max-w-sm space-y-4">
-                            {[
-                                {
-                                    icon: FileSpreadsheet,
-                                    title: "Spreadsheet Imports",
-                                    desc: "Roster, grades, and attendance history",
-                                },
-                                {
-                                    icon: Search,
-                                    title: "Fast Search",
-                                    desc: "Groups, students, sessions, coursework",
-                                },
-                                {
-                                    icon: ShieldCheck,
-                                    title: "Unified Reports",
-                                    desc: "Attendance and coursework exports",
-                                },
-                            ].map((item) => (
-                                <div
-                                    key={item.title}
-                                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm"
-                                >
-                                    <div className="flex items-start gap-4">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-100">
-                                            <item.icon className="h-5 w-5 text-zinc-900" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="relative">
+                            <div className="absolute -left-4 top-10 hidden h-28 w-28 rounded-[28px] border border-white/70 bg-white/60 blur-sm lg:block" />
+                            <div className="relative overflow-hidden rounded-[34px] border border-border/70 bg-card shadow-[0_30px_80px_-48px_rgba(22,47,95,0.42)]">
+                                <div className="border-b border-border/70 bg-background/80 px-5 py-4">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div>
+                                            <div className="text-sm font-semibold text-foreground">Quorum workspace</div>
+                                            <div className="text-xs text-muted-foreground">Live classroom control with coursework follow-through</div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <div className="text-sm font-semibold text-zinc-900">
-                                                {item.title}
+                                        <Badge variant="success">Live</Badge>
+                                    </div>
+                                </div>
+                                <div className="space-y-4 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,250,255,0.96))] p-5">
+                                    <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
+                                        <div className="rounded-[26px] bg-primary px-5 py-5 text-primary-foreground shadow-[0_20px_50px_-32px_rgba(22,47,95,0.65)]">
+                                            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary-foreground/70">Live attendance</div>
+                                            <div className="mt-3 text-2xl font-semibold">CS102 • Lecture 05</div>
+                                            <p className="mt-2 max-w-sm text-sm leading-6 text-primary-foreground/82">Projection-friendly QR, visible live status, and quick lecturer actions for the active classroom moment.</p>
+                                            <div className="mt-6 grid grid-cols-2 gap-3">
+                                                <div className="rounded-[20px] border border-white/14 bg-white/10 px-4 py-3">
+                                                    <div className="text-[11px] uppercase tracking-[0.24em] text-primary-foreground/65">Present</div>
+                                                    <div className="mt-2 text-2xl font-semibold">84</div>
+                                                </div>
+                                                <div className="rounded-[20px] border border-white/14 bg-white/10 px-4 py-3">
+                                                    <div className="text-[11px] uppercase tracking-[0.24em] text-primary-foreground/65">Late</div>
+                                                    <div className="mt-2 text-2xl font-semibold">7</div>
+                                                </div>
                                             </div>
-                                            <div className="text-sm text-zinc-500">
-                                                {item.desc}
+                                        </div>
+                                        <div className="space-y-3">
+                                            <div className="rounded-[24px] border border-border/70 bg-background px-4 py-4">
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Coursework pipeline</div>
+                                                <div className="mt-3 space-y-3">
+                                                    {[["Quiz import", "32 of 40 grades matched"], ["Weighted grading", "Attendance included in final blend"], ["Exam setup", "Question groups and launch review ready"]].map(([title, meta]) => (
+                                                        <div key={title} className="rounded-[18px] border border-border/60 bg-card px-3 py-3">
+                                                            <div className="text-sm font-medium text-foreground">{title}</div>
+                                                            <div className="mt-1 text-xs text-muted-foreground">{meta}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="rounded-[24px] border border-border/70 bg-background px-4 py-4">
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Evaluation fit</div>
+                                                <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-muted-foreground">
+                                                    <div className="rounded-[18px] bg-primary/6 px-3 py-3 text-primary">Department review friendly</div>
+                                                    <div className="rounded-[18px] bg-primary/6 px-3 py-3 text-primary">Fast TA onboarding</div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="border-b border-border/70 bg-card/55 py-18">
+                    <div className="mx-auto max-w-7xl px-6">
+                        <div className="max-w-3xl">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Why Quorum</div>
+                            <h2 className="mt-4 font-display text-4xl text-foreground">A stronger external story without drifting away from the real product.</h2>
+                            <p className="mt-4 text-lg leading-8 text-muted-foreground">The experience is designed for high-frequency academic work: live attendance, fast import review, safer grading actions, and clearer accountability when teams share responsibility.</p>
+                        </div>
+                        <div className="mt-10 grid gap-5 lg:grid-cols-3">
+                            {featurePillars.map((pillar) => (
+                                <article key={pillar.title} className="rounded-[28px] border border-border/70 bg-background px-5 py-6 shadow-sm">
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                        <pillar.icon className="h-5 w-5" />
+                                    </div>
+                                    <h3 className="mt-5 text-xl font-semibold text-foreground">{pillar.title}</h3>
+                                    <p className="mt-3 text-sm leading-7 text-muted-foreground">{pillar.description}</p>
+                                </article>
                             ))}
                         </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            {/* Footer */}
-            <footer className="bg-white border-t border-zinc-200 py-12">
-                <div className="max-w-5xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-zinc-900 p-1 rounded-sm">
-                            <QuorumIcon className="h-4 w-4 text-white" />
+                <section className="border-b border-border/70 bg-background py-18">
+                    <div className="mx-auto max-w-7xl px-6">
+                        <div className="grid gap-5 lg:grid-cols-3">
+                            {[
+                                [
+                                    "UX principle",
+                                    "Keep the next action obvious",
+                                    "Instructors see the live state, the next action, and the consequence without searching through the interface.",
+                                ],
+                                [
+                                    "Operational value",
+                                    "Reduce cleanup after each class",
+                                    "Attendance, coursework, exports, and student review stay connected so less work spills into spreadsheets later.",
+                                ],
+                                [
+                                    "Institution fit",
+                                    "Present a calmer system externally",
+                                    "Departments can evaluate Quorum through clearer workflows and cleaner surfaces instead of a prototype-feeling tool.",
+                                ],
+                            ].map(([eyebrow, title, copy]) => (
+                                <article
+                                    key={title}
+                                    className="rounded-[28px] border border-border/70 bg-card px-5 py-6 shadow-sm"
+                                >
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
+                                        {eyebrow}
+                                    </div>
+                                    <h3 className="mt-4 text-2xl font-semibold text-foreground">
+                                        {title}
+                                    </h3>
+                                    <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                                        {copy}
+                                    </p>
+                                </article>
+                            ))}
                         </div>
-                        <span className="font-semibold text-zinc-900 tracking-tight">
-                            Quorum
-                        </span>
                     </div>
-                    <p className="text-sm text-zinc-500">
-                        &copy; {new Date().getFullYear()} Attendance Systems
-                        infrastructure. All rights reserved.
-                    </p>
+                </section>
+
+                <section className="py-18">
+                    <div className="mx-auto grid max-w-7xl gap-10 px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+                        <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Operational flow</div>
+                            <h2 className="mt-4 font-display text-4xl text-foreground">Made for the way classes actually move.</h2>
+                            <p className="mt-4 text-lg leading-8 text-muted-foreground">Quorum keeps the UX direct for instructors while still giving departments a system they can evaluate and roll out responsibly.</p>
+                        </div>
+                        <div className="space-y-4">
+                            {workflowSteps.map((step) => (
+                                <article key={step.title} className="rounded-[28px] border border-border/70 bg-card px-5 py-5 shadow-sm">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">{step.eyebrow}</div>
+                                    <h3 className="mt-3 text-2xl font-semibold text-foreground">{step.title}</h3>
+                                    <p className="mt-3 text-sm leading-7 text-muted-foreground">{step.description}</p>
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+                <section className="border-y border-border/70 bg-card/55 py-18">
+                    <div className="mx-auto max-w-7xl px-6">
+                        <div className="flex flex-wrap items-end justify-between gap-5">
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Packages</div>
+                                <h2 className="mt-4 font-display text-4xl text-foreground">Packages that are easy to scan in under a minute.</h2>
+                            </div>
+                            <Button asChild variant="outline" className="rounded-full px-6">
+                                <Link href="/pricing">Open full pricing</Link>
+                            </Button>
+                        </div>
+                        <div className="mt-10 grid gap-5 lg:grid-cols-3">
+                            {packagePreview.map((plan) => (
+                                <article key={plan.name} className={`rounded-[30px] border px-5 py-6 shadow-sm transition-transform duration-300 hover:-translate-y-1 ${plan.featured ? "border-primary/20 bg-primary text-primary-foreground shadow-[0_24px_60px_-36px_rgba(22,47,95,0.55)]" : "border-border/70 bg-background hover:border-primary/20 hover:shadow-[0_22px_60px_-40px_rgba(22,47,95,0.18)]"}`}>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <h3 className={`text-2xl font-semibold ${plan.featured ? "text-primary-foreground" : "text-foreground"}`}>{plan.name}</h3>
+                                            <p className={`mt-2 text-sm ${plan.featured ? "text-primary-foreground/78" : "text-muted-foreground"}`}>{plan.audience}</p>
+                                        </div>
+                                        {plan.featured ? <Badge className="border-white/20 bg-white/10 text-primary-foreground">Most balanced</Badge> : null}
+                                    </div>
+                                    <div className={`mt-6 text-4xl font-semibold ${plan.featured ? "text-primary-foreground" : "text-foreground"}`}>{plan.price}</div>
+                                    <p className={`mt-3 text-sm leading-7 ${plan.featured ? "text-primary-foreground/82" : "text-muted-foreground"}`}>{plan.blurb}</p>
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <section className="py-18">
+                    <div className="mx-auto max-w-7xl px-6">
+                        <div className="rounded-[34px] border border-border/70 bg-card px-6 py-8 shadow-[0_26px_70px_-48px_rgba(22,47,95,0.34)] md:px-8">
+                            <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+                                <div>
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">Ready to evaluate</div>
+                                    <h2 className="mt-4 font-display text-4xl text-foreground">Move from classroom friction to a cleaner academic operating model.</h2>
+                                    <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">Whether you are piloting with a single instructor or evaluating for a department, Quorum gives you a credible starting point without asking teams to learn a tangled workflow.</p>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {[
+                                        { icon: Users, label: "Built for professors and TAs" },
+                                        { icon: Clock3, label: "Live attendance in seconds" },
+                                        { icon: FileSpreadsheet, label: "Import-friendly coursework" },
+                                        { icon: GraduationCap, label: "Exam flow included" },
+                                        { icon: MapPinned, label: "Venue-aware validation" },
+                                        { icon: ShieldCheck, label: "Trustworthy reporting surfaces" },
+                                    ].map((item) => (
+                                        <div key={item.label} className="rounded-[22px] border border-border/70 bg-background px-4 py-4 text-sm text-muted-foreground">
+                                            <item.icon className="mb-3 h-4 w-4 text-primary" />
+                                            {item.label}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="mt-8 flex flex-wrap gap-3">
+                                {isLoggedIn ? (
+                                    <Button asChild size="lg" className="rounded-full px-7">
+                                        <Link href="/dashboard">Open dashboard</Link>
+                                    </Button>
+                                ) : (
+                                    <Button asChild size="lg" className="rounded-full px-7">
+                                        <Link href="/register">Start free</Link>
+                                    </Button>
+                                )}
+                                <Button asChild size="lg" variant="outline" className="rounded-full px-7">
+                                    <Link href="/pricing">Compare packages</Link>
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+
+            <footer className="border-t border-border/70 bg-card/40 py-10">
+                <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-border/70 bg-card text-primary">
+                            <QuorumIcon className="h-4 w-4" />
+                        </div>
+                        <div>
+                            <div className="font-semibold text-foreground">Quorum</div>
+                            <div className="text-sm text-muted-foreground">Attendance and coursework operations for academic teams.</div>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-5 text-sm text-muted-foreground">
+                        <Link href="/pricing" className="transition-colors hover:text-primary">Pricing</Link>
+                        <Link href="/login" className="transition-colors hover:text-primary">Sign in</Link>
+                        <a href="mailto:sales@quorum.app" className="transition-colors hover:text-primary">sales@quorum.app</a>
+                    </div>
                 </div>
             </footer>
         </div>

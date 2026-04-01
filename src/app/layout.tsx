@@ -1,11 +1,25 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { IBM_Plex_Mono, Newsreader, Public_Sans } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/AppProviders";
 
-const inter = Inter({
-    variable: "--font-inter",
+const publicSans = Public_Sans({
+    variable: "--font-public-sans",
     subsets: ["latin"],
+    display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+    variable: "--font-ibm-plex-mono",
+    subsets: ["latin"],
+    display: "swap",
+    weight: ["400", "500", "600"],
+});
+
+const newsreader = Newsreader({
+    variable: "--font-newsreader",
+    subsets: ["latin"],
+    display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -21,7 +35,9 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en">
-            <body className={`${inter.variable} font-sans antialiased`}>
+            <body
+                className={`${publicSans.variable} ${ibmPlexMono.variable} ${newsreader.variable} font-sans antialiased`}
+            >
                 <AppProviders>{children}</AppProviders>
             </body>
         </html>

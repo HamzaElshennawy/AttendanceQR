@@ -6,7 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, XCircle, QrCode, Loader2, MapPin } from "lucide-react";
+import {
+    CheckCircle2,
+    Clock3,
+    Loader2,
+    MapPin,
+    QrCode,
+    ShieldCheck,
+    XCircle,
+} from "lucide-react";
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
 
 type Status =
@@ -147,8 +155,8 @@ function AttendForm() {
     // Success State
     if (status === "success") {
         return (
-            <div className="min-h-screen bg-linear-to-br from-green-50 via-white to-emerald-50 flex items-center justify-center p-4">
-                <Card className="w-full max-w-sm text-center shadow-lg border-0">
+            <div className="min-h-screen bg-[linear-gradient(180deg,rgba(249,251,255,0.98),rgba(243,247,252,0.98))] flex items-center justify-center p-4">
+                <Card className="w-full max-w-sm text-center border-border/70 shadow-[0_30px_70px_-38px_rgba(22,47,95,0.35)]">
                     <CardContent className="pt-8 pb-8">
                         <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                             <CheckCircle2 className="h-10 w-10 text-green-600" />
@@ -169,8 +177,8 @@ function AttendForm() {
     // Already Checked In State
     if (status === "already") {
         return (
-            <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
-                <Card className="w-full max-w-sm text-center shadow-lg border-0">
+            <div className="min-h-screen bg-[linear-gradient(180deg,rgba(249,251,255,0.98),rgba(243,247,252,0.98))] flex items-center justify-center p-4">
+                <Card className="w-full max-w-sm text-center border-border/70 shadow-[0_30px_70px_-38px_rgba(22,47,95,0.35)]">
                     <CardContent className="pt-8 pb-8">
                         <div className="h-20 w-20 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
                             <CheckCircle2 className="h-10 w-10 text-blue-600" />
@@ -186,20 +194,48 @@ function AttendForm() {
     }
 
     return (
-        <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-sm shadow-lg border-0">
-                <CardHeader className="text-center pb-4">
-                    <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
-                        <QrCode className="h-7 w-7 text-blue-600" />
+        <div className="min-h-screen bg-[linear-gradient(180deg,rgba(249,251,255,0.98),rgba(243,247,252,0.98))] flex items-center justify-center p-4">
+            <Card className="w-full max-w-sm border-border/70 shadow-[0_30px_70px_-38px_rgba(22,47,95,0.35)]">
+                <CardHeader className="pb-4 text-center">
+                    <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <QrCode className="h-7 w-7" />
                     </div>
-                    <CardTitle className="text-xl">
-                        Attendance<span className="text-blue-600">QR</span>
-                    </CardTitle>
-                    <p className="text-sm text-gray-500">
-                        Enter your university ID to check in
-                    </p>
+                    <div className="space-y-2">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary/80">
+                            Student check-in
+                        </p>
+                        <CardTitle className="text-xl text-foreground">
+                            Confirm your attendance
+                        </CardTitle>
+                        <p className="text-sm text-soft">
+                            Enter your university ID to check in for this live session.
+                        </p>
+                    </div>
                 </CardHeader>
                 <CardContent>
+                    <div className="mb-4 grid gap-3">
+                        <div className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-left">
+                            <div className="flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                <ShieldCheck className="h-4 w-4 text-primary" />
+                                Check-in status
+                            </div>
+                            <p className="mt-2 text-sm text-soft">
+                                Use the same university ID registered in your group. Your check-in will be validated for this session only.
+                            </p>
+                        </div>
+                        {sessionHasLocation && (
+                            <div className="rounded-2xl border border-primary/15 bg-primary/6 px-4 py-3 text-left">
+                                <div className="flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-primary">
+                                    <MapPin className="h-4 w-4" />
+                                    Location required
+                                </div>
+                                <p className="mt-2 text-sm text-soft">
+                                    This session needs location access to complete attendance.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
                     <form
                         onSubmit={handleSubmit}
                         className="space-y-4"
@@ -216,23 +252,21 @@ function AttendForm() {
                                 }
                                 required
                                 autoFocus
-                                className="text-center text-lg tracking-wider"
+                                className="text-center text-lg tracking-[0.18em]"
                             />
                         </div>
 
-                        {sessionHasLocation && (
-                            <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded-md">
-                                <MapPin className="h-3 w-3 shrink-0" />
-                                <span>
-                                    This session requires location access
-                                </span>
+                        {status === "error" && (
+                            <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-3 text-sm text-red-600">
+                                <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                                <span>{message}</span>
                             </div>
                         )}
 
-                        {status === "error" && (
-                            <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
-                                <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                                <span>{message}</span>
+                        {status === "getting_location" && (
+                            <div className="flex items-start gap-2 rounded-xl bg-background px-3 py-3 text-sm text-soft">
+                                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                                <span>{locationStatus}</span>
                             </div>
                         )}
 
@@ -268,12 +302,12 @@ function AttendForm() {
 
 export default function AttendPage() {
     return (
-        <Suspense
-            fallback={
-                <div className="min-h-screen flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                </div>
-            }
+            <Suspense
+                fallback={
+                    <div className="min-h-screen flex items-center justify-center bg-[linear-gradient(180deg,rgba(249,251,255,0.98),rgba(243,247,252,0.98))]">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                }
         >
             <AttendForm />
         </Suspense>

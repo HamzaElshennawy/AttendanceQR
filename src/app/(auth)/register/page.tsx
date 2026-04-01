@@ -62,9 +62,20 @@ export default function RegisterPage() {
   };
 
   return (
-    <Card className="shadow-lg border-0 shadow-blue-100/50">
+    <Card className="border-0 bg-transparent shadow-none">
       <form onSubmit={handleRegister}>
         <CardContent className="space-y-4 pt-6">
+          <div className="space-y-2">
+            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-primary/80">
+              Create account
+            </p>
+            <h1 className="text-2xl font-semibold text-foreground">
+              Start your Quorum workspace
+            </h1>
+            <p className="text-sm leading-6 text-soft">
+              Create your account to manage attendance, grading, and academic coordination in one system.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="name">Full Name</Label>
             <Input
@@ -110,19 +121,19 @@ export default function RegisterPage() {
             />
           </div>
           {error && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
+            <p className="rounded-xl border border-destructive/15 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {error}
             </p>
           )}
         </CardContent>
-        <CardFooter className="flex flex-col gap-3">
+        <CardFooter className="flex flex-col gap-3 border-t border-border/60 pt-5">
           <Button type="submit" className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Account
           </Button>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-soft">
             Already have an account?{" "}
-            <Link href="/login" className="text-blue-600 hover:underline font-medium">
+            <Link href="/login" className="font-medium text-primary transition-colors hover:text-primary/80">
               Sign In
             </Link>
           </p>

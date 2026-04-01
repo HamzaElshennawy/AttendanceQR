@@ -8,9 +8,23 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
     {
+        version: "v0.8.0",
+        date: "April 1, 2026",
+        tag: "Latest",
+        title: "Quorum Academic UX And Product Surface Redesign",
+        notes: [
+            "The dashboard shell, sidebar, search, and shared UI primitives were redesigned around the Quorum Academic system for a calmer and more consistent workspace.",
+            "Group, session, live attendance, student detail, coursework, grading, exam, settings, feedback, and admin screens were updated to match the new product direction without adding unsupported workflows.",
+            "Student, session, and coursework flows now use clearer breadcrumbs, stronger section hierarchy, improved dialogs, and more consistent table and tab behavior across the app.",
+            "The live QR session screen now includes a cleaner light-theme command view and a dedicated full-screen projection mode for classroom display.",
+            "Login, register, landing, pricing, and package comparison pages were redesigned so the public-facing experience matches the product system more closely.",
+            "Release notes now use a richer update-log layout with summary metrics and structured release entries for easier product review.",
+        ],
+    },
+    {
         version: "v0.7.0",
         date: "March 26, 2026",
-        tag: "Latest",
+        tag: "Coursework",
         title: "LMS Coursework, Imports, And Search",
         notes: [
             "Groups now support a separate LMS-style coursework area for quizzes, assignments, worksheets, midterms, practicals, participation, and final exams.",

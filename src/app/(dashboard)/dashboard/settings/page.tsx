@@ -313,141 +313,175 @@ export default function SettingsPage() {
 
     return (
         <div className="space-y-8">
-            <div className="mb-2 flex items-start justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">
-                        Settings
-                    </h1>
-                    <p className="mt-1 text-gray-500">
-                        Manage grading policies, late rules, and account
-                        security
-                    </p>
+            <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.72fr)]">
+                <div className="overflow-hidden rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(245,248,252,0.96))] shadow-[0_24px_60px_-42px_rgba(22,47,95,0.28)]">
+                    <div className="px-6 py-6 sm:px-7">
+                        <Badge className="rounded-full border-primary/20 bg-primary/8 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary hover:bg-primary/8">
+                            System settings
+                        </Badge>
+                        <h1 className="mt-4 font-display text-[2rem] leading-tight text-foreground">
+                            Policy and account controls
+                        </h1>
+                        <p className="mt-3 max-w-3xl text-sm leading-6 text-soft">
+                            Manage grading policies, late rules, and account
+                            security with clearer grouped settings and safer save
+                            flows.
+                        </p>
+                    </div>
                 </div>
-                <Dialog
-                    open={passwordDialogOpen}
-                    onOpenChange={(open) => {
-                        setPasswordDialogOpen(open);
-                        if (!open) {
-                            setCurrentPassword("");
-                            setNewPassword("");
-                            setConfirmPassword("");
-                            setError("");
-                            setSuccess("");
-                        }
-                    }}
-                >
-                    <DialogTrigger asChild>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="shrink-0"
+
+                <div className="rounded-[28px] border border-border/70 bg-background/96 p-6 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Security
+                    </p>
+                    <h2 className="mt-2 text-xl font-semibold text-foreground">
+                        Account access
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-soft">
+                        Keep your teaching workspace protected by rotating your password when needed.
+                    </p>
+                    <div className="mt-5 rounded-2xl border border-border/70 bg-transparent px-4 py-4 text-sm text-soft">
+                        Password changes apply to your full Quorum account and affect access across all groups.
+                    </div>
+                    <div className="mt-5">
+                        <Dialog
+                            open={passwordDialogOpen}
+                            onOpenChange={(open) => {
+                                setPasswordDialogOpen(open);
+                                if (!open) {
+                                    setCurrentPassword("");
+                                    setNewPassword("");
+                                    setConfirmPassword("");
+                                    setError("");
+                                    setSuccess("");
+                                }
+                            }}
                         >
-                            <Lock className="mr-2 h-4 w-4" />
-                            Change Password
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Change Password</DialogTitle>
-                            <DialogDescription>
-                                Update your password to keep your account
-                                secure.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <form
-                            onSubmit={handleChangePassword}
-                            className="space-y-4"
-                        >
-                            <div className="space-y-2">
-                                <Label htmlFor="currentPassword">
-                                    Current Password
-                                </Label>
-                                <Input
-                                    id="currentPassword"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={currentPassword}
-                                    onChange={(e) =>
-                                        setCurrentPassword(e.target.value)
-                                    }
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="newPassword">
-                                    New Password
-                                </Label>
-                                <Input
-                                    id="newPassword"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={newPassword}
-                                    onChange={(e) =>
-                                        setNewPassword(e.target.value)
-                                    }
-                                    required
-                                />
-                                <p className="text-xs text-gray-400">
-                                    Must be at least 6 characters
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="confirmPassword">
-                                    Confirm New Password
-                                </Label>
-                                <Input
-                                    id="confirmPassword"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={confirmPassword}
-                                    onChange={(e) =>
-                                        setConfirmPassword(e.target.value)
-                                    }
-                                    required
-                                />
-                            </div>
-
-                            {error && (
-                                <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-600">
-                                    <AlertCircle className="h-4 w-4 shrink-0" />
-                                    {error}
-                                </div>
-                            )}
-
-                            {success && (
-                                <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2.5 text-sm text-green-600">
-                                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                                    {success}
-                                </div>
-                            )}
-
-                            <DialogFooter>
+                            <DialogTrigger asChild>
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => setPasswordDialogOpen(false)}
+                                    className="w-full justify-start"
                                 >
-                                    Cancel
+                                    <Lock className="mr-2 h-4 w-4" />
+                                    Change Password
                                 </Button>
-                                <Button
-                                    type="submit"
-                                    disabled={loading}
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Change Password</DialogTitle>
+                                    <DialogDescription>
+                                        Update your password to keep your account
+                                        secure.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <form
+                                    onSubmit={handleChangePassword}
+                                    className="space-y-4"
                                 >
-                                    {loading && (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    <div className="space-y-2">
+                                        <Label htmlFor="currentPassword">
+                                            Current Password
+                                        </Label>
+                                        <Input
+                                            id="currentPassword"
+                                            type="password"
+                                            placeholder="••••••••"
+                                            value={currentPassword}
+                                            onChange={(e) =>
+                                                setCurrentPassword(e.target.value)
+                                            }
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="newPassword">
+                                            New Password
+                                        </Label>
+                                        <Input
+                                            id="newPassword"
+                                            type="password"
+                                            placeholder="••••••••"
+                                            value={newPassword}
+                                            onChange={(e) =>
+                                                setNewPassword(e.target.value)
+                                            }
+                                            required
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Must be at least 6 characters
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="confirmPassword">
+                                            Confirm New Password
+                                        </Label>
+                                        <Input
+                                            id="confirmPassword"
+                                            type="password"
+                                            placeholder="••••••••"
+                                            value={confirmPassword}
+                                            onChange={(e) =>
+                                                setConfirmPassword(e.target.value)
+                                            }
+                                            required
+                                        />
+                                    </div>
+
+                                    {error && (
+                                        <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-600">
+                                            <AlertCircle className="h-4 w-4 shrink-0" />
+                                            {error}
+                                        </div>
                                     )}
-                                    Update Password
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+
+                                    {success && (
+                                        <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2.5 text-sm text-green-600">
+                                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                            {success}
+                                        </div>
+                                    )}
+
+                                    <DialogFooter>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setPasswordDialogOpen(false)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="submit"
+                                            disabled={loading}
+                                        >
+                                            {loading && (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            )}
+                                            Update Password
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </div>
+            </section>
+
+            <div className="mb-2 flex items-start justify-between gap-4">
+                <div>
+                    <h2 className="text-xl font-semibold text-foreground">
+                        Group grading policies
+                    </h2>
+                    <p className="mt-1 text-soft">
+                        Each group keeps its own attendance grading rules and late cutoff.
+                    </p>
+                </div>
             </div>
 
             <div className="space-y-6">
-                <Card className="border-gray-200 shadow-sm">
+                <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
                     <CardHeader>
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50">
@@ -469,7 +503,7 @@ export default function SettingsPage() {
                     <CardContent className="space-y-4 pt-6">
                         {loadingPolicies ? (
                             <div className="flex items-center justify-center py-10">
-                                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                                <Loader2 className="h-6 w-6 animate-spin text-primary" />
                             </div>
                         ) : groups.length === 0 ? (
                             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
