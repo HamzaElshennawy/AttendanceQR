@@ -46,11 +46,12 @@ async function persistSubscription(
     const status = (subscription?.status || "free") as SubscriptionStatus;
     const periodStart = subscription?.items.data[0]?.current_period_start ?? null;
     const periodEnd = subscription?.items.data[0]?.current_period_end ?? null;
+    const planTierFromMeta = subscription?.metadata?.target_plan as PlanTier | undefined;
 
     await supabaseAdmin
         .from("professor_subscriptions")
         .update({
-            plan_tier: overrides?.plan_tier || inferPlanTierFromPriceId(priceId),
+            plan_tier: overrides?.plan_tier || planTierFromMeta || inferPlanTierFromPriceId(priceId),
             status: overrides?.status || status,
             stripe_subscription_id: subscription?.id || null,
             stripe_price_id: priceId,

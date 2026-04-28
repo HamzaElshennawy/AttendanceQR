@@ -604,29 +604,33 @@ export default function SettingsPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        <Button
-                            type="button"
-                            className="w-full"
-                            onClick={() => handleUpgrade("plus")}
-                            disabled={billingActionLoading !== ""}
-                        >
-                            {billingActionLoading === "plus" && (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            )}
-                            Upgrade to Plus
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => handleUpgrade("pro")}
-                            disabled={billingActionLoading !== ""}
-                        >
-                            {billingActionLoading === "pro" && (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            )}
-                            Upgrade to Pro
-                        </Button>
+                        {billingSummary?.subscription.plan_tier === "free" && (
+                            <Button
+                                type="button"
+                                className="w-full"
+                                onClick={() => handleUpgrade("plus")}
+                                disabled={billingActionLoading !== ""}
+                            >
+                                {billingActionLoading === "plus" && (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                )}
+                                Upgrade to Plus
+                            </Button>
+                        )}
+                        {billingSummary?.subscription.plan_tier !== "pro" && (
+                            <Button
+                                type="button"
+                                variant={billingSummary?.subscription.plan_tier === "plus" ? "default" : "outline"}
+                                className="w-full"
+                                onClick={() => handleUpgrade("pro")}
+                                disabled={billingActionLoading !== ""}
+                            >
+                                {billingActionLoading === "pro" && (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                )}
+                                Upgrade to Pro
+                            </Button>
+                        )}
                         <Button
                             type="button"
                             variant="ghost"

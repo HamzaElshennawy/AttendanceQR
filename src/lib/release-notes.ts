@@ -8,6 +8,16 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
     {
+        version: "v0.8.1",
+        date: "April 29, 2026",
+        tag: "Fixes",
+        title: "Subscription and Session Reliability Updates",
+        notes: [
+            "Fixed an issue where static QR sessions would expire prematurely by ensuring they consistently receive a 1-hour expiration and remain active via background polling.",
+            "Resolved a subscription synchronization bug that caused successful payments to not reflect on the user's account.",
+        ],
+    },
+    {
         version: "v0.8.0",
         date: "April 1, 2026",
         tag: "Latest",

@@ -62,13 +62,13 @@ export async function POST(
 
     let currentToken: string;
 
-    if (!isRotating && session.current_token) {
-        // Static QR: reuse existing token, just extend expiry
-        currentToken = session.current_token;
+    if (!isRotating) {
+        // Static QR: reuse existing token or generate one, always with 1-hour expiry
+        currentToken = session.current_token || crypto.randomBytes(16).toString("hex");
         const tokenExpiresAt = new Date(Date.now() + 3600 * 1000).toISOString(); // 1 hour expiry for static
         await supabaseAdmin
             .from("sessions")
-            .update({ token_expires_at: tokenExpiresAt })
+            .update({ current_token: currentToken, token_expires_at: tokenExpiresAt })
             .eq("id", sessionId);
     } else {
         // Rotating QR: generate new token

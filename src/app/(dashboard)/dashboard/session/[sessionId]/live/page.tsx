@@ -113,6 +113,11 @@ export default function LiveSessionPage() {
             rotationTimerRef.current = setInterval(() => {
                 setRotationCountdown((prev) => (prev > 0 ? prev - 1 : 0));
             }, 1000);
+        } else {
+            // Static QR: poll less frequently to refresh token expiry and attendance counts
+            intervalRef.current = setInterval(() => {
+                rotateToken();
+            }, 30_000);
         }
 
         return () => {
