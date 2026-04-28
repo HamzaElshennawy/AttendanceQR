@@ -93,7 +93,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
     plus: {
         tier: "plus",
         label: "Plus",
-        monthlyPriceLabel: "$29/month",
+        monthlyPriceLabel: "$5/month",
         features: {
             coursework: true,
             team_members: true,
@@ -111,7 +111,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
     pro: {
         tier: "pro",
         label: "Pro",
-        monthlyPriceLabel: "$99/month",
+        monthlyPriceLabel: "$10/month",
         features: {
             coursework: true,
             team_members: true,
@@ -196,35 +196,33 @@ export async function getUsageSnapshot(userId: string): Promise<UsageSnapshot> {
     monthStart.setUTCHours(0, 0, 0, 0);
 
     const [{ data: groups }] = await Promise.all([
-        supabaseAdmin
-            .from("groups")
-            .select("id")
-            .eq("professor_id", userId),
+        supabaseAdmin.from("groups").select("id").eq("professor_id", userId),
     ]);
 
     const groupIds = (groups || []).map((group) => group.id);
 
-    const [studentsResult, sessionsResult, membershipsResult] = await Promise.all([
-        groupIds.length
-            ? supabaseAdmin
-                  .from("students")
-                  .select("id", { count: "exact", head: true })
-                  .in("group_id", groupIds)
-            : Promise.resolve({ count: 0 } as { count: number | null }),
-        groupIds.length
-            ? supabaseAdmin
-                  .from("sessions")
-                  .select("id", { count: "exact", head: true })
-                  .in("group_id", groupIds)
-                  .gte("started_at", monthStart.toISOString())
-            : Promise.resolve({ count: 0 } as { count: number | null }),
-        groupIds.length
-            ? supabaseAdmin
-                  .from("group_memberships")
-                  .select("professor_id", { count: "exact", head: true })
-                  .in("group_id", groupIds)
-            : Promise.resolve({ count: 0 } as { count: number | null }),
-    ]);
+    const [studentsResult, sessionsResult, membershipsResult] =
+        await Promise.all([
+            groupIds.length
+                ? supabaseAdmin
+                      .from("students")
+                      .select("id", { count: "exact", head: true })
+                      .in("group_id", groupIds)
+                : Promise.resolve({ count: 0 } as { count: number | null }),
+            groupIds.length
+                ? supabaseAdmin
+                      .from("sessions")
+                      .select("id", { count: "exact", head: true })
+                      .in("group_id", groupIds)
+                      .gte("started_at", monthStart.toISOString())
+                : Promise.resolve({ count: 0 } as { count: number | null }),
+            groupIds.length
+                ? supabaseAdmin
+                      .from("group_memberships")
+                      .select("professor_id", { count: "exact", head: true })
+                      .in("group_id", groupIds)
+                : Promise.resolve({ count: 0 } as { count: number | null }),
+        ]);
 
     return {
         groups: groupIds.length,
@@ -234,7 +232,9 @@ export async function getUsageSnapshot(userId: string): Promise<UsageSnapshot> {
     };
 }
 
-export async function getCurrentEntitlements(userId: string): Promise<CurrentEntitlements> {
+export async function getCurrentEntitlements(
+    userId: string,
+): Promise<CurrentEntitlements> {
     const subscription = await getOrCreateSubscriptionRecord(userId);
     const planTier = normalizePlanTier(subscription.plan_tier);
     const usage = await getUsageSnapshot(userId);
@@ -264,7 +264,10 @@ export async function getCurrentEntitlements(userId: string): Promise<CurrentEnt
     };
 }
 
-export async function requireFeature(userId: string, feature: EntitlementFeature) {
+export async function requireFeature(
+    userId: string,
+    feature: EntitlementFeature,
+) {
     const entitlements = await getCurrentEntitlements(userId);
     return {
         ok: entitlements.features[feature],
