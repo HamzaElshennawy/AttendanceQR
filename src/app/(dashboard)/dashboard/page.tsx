@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,99 +51,57 @@ export default function DashboardPage() {
     const [newGroupName, setNewGroupName] = useState("");
     const [creating, setCreating] = useState(false);
     const router = useRouter();
-    const supabase = createClient();
-    const { showConfirm } = useAppDialog();
+    const { showAlert, showConfirm } = useAppDialog();
 
     const fetchGroups = async () => {
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+        const response = await fetch("/api/groups");
+        const data = await response.json();
 
-        const { data: memberships, error: membershipsError } = user
-            ? await supabase
-                  .from("group_memberships")
-                  .select("group_id, role")
-                  .eq("professor_id", user.id)
-            : { data: [], error: null };
-
-        if (membershipsError) {
-            console.warn(
-                "Falling back to owner-only groups view:",
-                membershipsError.message,
-            );
-        }
-
-        const membershipRoleByGroup = new Map(
-            (memberships || []).map((membership) => [
-                membership.group_id,
-                membership.role as "owner" | "ta",
-            ]),
-        );
-
-        const { data: groupsData, error: groupsError } = await supabase
-            .from("groups")
-            .select("*")
-            .order("created_at", { ascending: false });
-
-        if (groupsError) {
-            console.error("Failed to load groups:", groupsError.message);
+        if (!response.ok) {
+            console.error("Failed to load groups:", data.error);
             setGroups([]);
             setLoading(false);
             return;
         }
 
-        if (groupsData) {
-            const groupsWithCounts = await Promise.all(
-                groupsData.map(async (group) => {
-                    const { count: studentCount } = await supabase
-                        .from("students")
-                        .select("*", { count: "exact", head: true })
-                        .eq("group_id", group.id);
-
-                    const { count: sessionCount } = await supabase
-                        .from("sessions")
-                        .select("*", { count: "exact", head: true })
-                        .eq("group_id", group.id);
-
-                    return {
-                        ...group,
-                        access_role:
-                            group.professor_id === user?.id
-                                ? "owner"
-                                : membershipRoleByGroup.get(group.id) || "ta",
-                        student_count: studentCount || 0,
-                        session_count: sessionCount || 0,
-                    };
-                }),
-            );
-            setGroups(groupsWithCounts);
-        }
+        setGroups((data.groups || []) as Group[]);
         setLoading(false);
     };
 
     useEffect(() => {
-        fetchGroups();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        const timeout = window.setTimeout(() => {
+            void fetchGroups();
+        }, 0);
+        return () => window.clearTimeout(timeout);
     }, []);
 
     const handleCreateGroup = async (e: React.FormEvent) => {
         e.preventDefault();
         setCreating(true);
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { error } = await supabase.from("groups").insert({
-            professor_id: user.id,
-            name: newGroupName,
+        const response = await fetch("/api/groups", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: newGroupName,
+            }),
         });
+        const data = await response.json();
 
-        if (!error) {
+        if (response.ok) {
             setNewGroupName("");
             setCreateOpen(false);
             fetchGroups();
+        } else {
+            await showAlert({
+                title:
+                    data.code === "PLAN_LIMIT_REACHED"
+                        ? "Plan Limit Reached"
+                        : "Failed To Create Group",
+                description: data.error || "Failed to create group.",
+                variant:
+                    data.code === "PLAN_LIMIT_REACHED" ? "warning" : "error",
+            });
         }
         setCreating(false);
     };
@@ -163,7 +120,20 @@ export default function DashboardPage() {
         });
         if (!confirmed) return;
 
-        await supabase.from("groups").delete().eq("id", groupId);
+        const response = await fetch(`/api/groups/${groupId}`, {
+            method: "DELETE",
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            await showAlert({
+                title: "Failed To Delete Group",
+                description: data.error || "Failed to delete group.",
+                variant: "error",
+            });
+            return;
+        }
+
         fetchGroups();
     };
 

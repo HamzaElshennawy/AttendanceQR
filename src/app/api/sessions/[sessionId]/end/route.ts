@@ -1,14 +1,19 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { requireSessionAccess } from "@/lib/group-access";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   const { sessionId } = await params;
-  const supabase = await createClient();
+  const access = await requireSessionAccess(sessionId);
 
-  const { error } = await supabase
+  if (!access) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { error } = await supabaseAdmin
     .from("sessions")
     .update({ is_active: false })
     .eq("id", sessionId);

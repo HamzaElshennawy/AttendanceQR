@@ -165,10 +165,9 @@ export default function LiveSessionPage() {
     }, [qrFullscreenOpen]);
 
     const handleEndSession = async () => {
-        await supabase
-            .from("sessions")
-            .update({ is_active: false })
-            .eq("id", sessionId);
+        await fetch(`/api/sessions/${sessionId}/end`, {
+            method: "POST",
+        });
         setSessionEnded(true);
         if (intervalRef.current) clearInterval(intervalRef.current);
     };

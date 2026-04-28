@@ -87,6 +87,15 @@ interface GradeSummaryRow {
     score: number;
 }
 
+interface BillingSummary {
+    features: {
+        advanced_exports: boolean;
+    };
+    plan: {
+        label: string;
+    };
+}
+
 function normalizeAssessment(assessment: AssessmentRow): CourseworkAssessment {
     return {
         ...assessment,
@@ -119,6 +128,7 @@ export function CourseworkGroupPanel({
     const [downloading, setDownloading] = useState(false);
     const [selectedAssessment, setSelectedAssessment] =
         useState<CourseworkAssessment | null>(null);
+    const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
 
     const [title, setTitle] = useState("");
     const [kind, setKind] = useState<CourseworkAssessmentKind>("quiz");
@@ -186,6 +196,20 @@ export function CourseworkGroupPanel({
     useEffect(() => {
         void loadAssessments();
     }, [loadAssessments]);
+
+    useEffect(() => {
+        const loadBilling = async () => {
+            const response = await fetch("/api/billing/summary");
+            if (!response.ok) {
+                setBillingSummary(null);
+                return;
+            }
+
+            setBillingSummary((await response.json()) as BillingSummary);
+        };
+
+        void loadBilling();
+    }, []);
 
     const totalGradedEntries = useMemo(
         () =>
@@ -270,6 +294,15 @@ export function CourseworkGroupPanel({
     const handleDownloadCourseworkExcel = async (
         includeAttendance: boolean,
     ) => {
+        if (!billingSummary?.features.advanced_exports) {
+            await showAlert({
+                title: "Upgrade Required",
+                description: `Coursework exports are available on Plus and Pro plans. Current plan: ${billingSummary?.plan.label || "Free"}.`,
+                variant: "warning",
+            });
+            return;
+        }
+
         if (!students.length || (!assessments.length && !includeAttendance)) {
             await showAlert({
                 title: "Nothing To Export",

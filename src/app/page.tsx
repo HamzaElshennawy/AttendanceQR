@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import {
     ArrowRight,
     Building2,
-    CheckCircle2,
     ClipboardCheck,
     Clock3,
     FileSpreadsheet,
@@ -76,23 +75,23 @@ const proofStrip = [
 
 const packagePreview = [
     {
-        name: "Starter",
-        audience: "Single instructor or pilot section",
-        price: "$29",
-        blurb: "Attendance, coursework basics, and lightweight exports for a fast classroom rollout.",
+        name: "Free",
+        audience: "Single instructor pilot",
+        price: "$0",
+        blurb: "A small-pilot plan with QR attendance, coursework visibility, and tight usage limits for evaluation.",
     },
     {
-        name: "Department",
-        audience: "Multi-course department teams",
-        price: "$199",
-        blurb: "Shared oversight, exam workflows, richer imports, and cleaner administrative reporting.",
+        name: "Plus",
+        audience: "Instructors who need collaboration",
+        price: "$29",
+        blurb: "Adds team sharing, coursework exports, richer reporting, and larger teaching limits.",
         featured: true,
     },
     {
-        name: "Faculty",
-        audience: "Faculty-wide coordination",
-        price: "Custom",
-        blurb: "Broader governance, onboarding support, and implementation planning for institutional scale.",
+        name: "Pro",
+        audience: "Full academic operations",
+        price: "$99",
+        blurb: "Unlocks exams, advanced controls, and the full premium feature set with high practical limits.",
     },
 ];
 

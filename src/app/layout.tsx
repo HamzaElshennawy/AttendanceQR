@@ -23,9 +23,9 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-    title: "Quorum — Enterprise Attendance Infrastructure",
+    title: "Quorum — Attendance, Coursework, and Exam Operations",
     description:
-        "Take attendance in seconds with rotating QR codes. Students scan, check in, and you download the report. No apps needed.",
+        "Run QR attendance, coursework workflows, and exam operations in one academic workspace.",
 };
 
 export default function RootLayout({

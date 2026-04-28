@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { releaseNotes } from "@/lib/release-notes";
-import { CalendarDays, Clock3, Layers3, Sparkles } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 
 const latestRelease = releaseNotes[0];
 const totalEntries = releaseNotes.reduce(

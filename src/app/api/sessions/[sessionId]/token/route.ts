@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { requireSessionAccess } from "@/lib/group-access";
 
 // Use service role for token rotation
 const supabaseAdmin = createClient(
@@ -9,10 +10,15 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(
-    request: Request,
+    _request: Request,
     { params }: { params: Promise<{ sessionId: string }> },
 ) {
     const { sessionId } = await params;
+    const access = await requireSessionAccess(sessionId);
+
+    if (!access) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     // Fetch session
     const { data: session, error: fetchError } = await supabaseAdmin

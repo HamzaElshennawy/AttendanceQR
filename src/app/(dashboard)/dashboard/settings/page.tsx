@@ -36,6 +36,7 @@ import {
     defaultGradingSettings,
     formatGrade,
     normalizeGradingSettings,
+    type GradingSettings,
 } from "@/lib/grading-settings";
 
 interface Group {
@@ -44,17 +45,44 @@ interface Group {
     professor_id: string;
 }
 
-interface Membership {
-    group_id: string;
-    role: "owner" | "ta";
-}
-
 interface GroupSettingsForm {
     present_grade: string;
     late_grade: string;
     excused_grade: string;
     absent_grade: string;
     late_after_minutes: string;
+}
+
+interface BillingSummary {
+    subscription: {
+        plan_tier: "free" | "plus" | "pro";
+        status: string;
+        current_period_end: string | null;
+        cancel_at_period_end: boolean;
+    };
+    plan: {
+        label: string;
+        monthlyPriceLabel: string;
+    };
+    usage: {
+        groups: number;
+        students: number;
+        sessionsThisMonth: number;
+        teamMembers: number;
+    };
+    quotas: {
+        groups: number;
+        students: number;
+        sessionsPerMonth: number;
+        teamMembers: number;
+    };
+    features: {
+        coursework: boolean;
+        team_members: boolean;
+        rich_reporting: boolean;
+        advanced_exports: boolean;
+        exams: boolean;
+    };
 }
 
 const defaultFormValues: GroupSettingsForm = {
@@ -84,47 +112,33 @@ export default function SettingsPage() {
         Record<string, { saving: boolean; message: string; error: string }>
     >({});
     const [loadingPolicies, setLoadingPolicies] = useState(true);
+    const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
+    const [loadingBilling, setLoadingBilling] = useState(true);
+    const [billingActionLoading, setBillingActionLoading] = useState<"" | "plus" | "pro" | "portal">("");
     const router = useRouter();
     const supabase = createClient();
 
     const fetchSettingsData = useCallback(async () => {
         setLoadingPolicies(true);
+        const groupsResponse = await fetch("/api/groups");
+        const groupsPayload = await groupsResponse.json();
 
-        const [
-            {
-                data: { user },
-            },
-            { data: groupsData },
-            { data: membershipsData },
-            { data: settingsData },
-        ] = await Promise.all([
-            supabase.auth.getUser(),
-            supabase.from("groups").select("id, name, professor_id").order("name"),
-            supabase
-                .from("group_memberships")
-                .select("group_id, role")
-                .order("created_at"),
-            supabase
-                .from("group_grading_settings")
-                .select(
-                    "group_id, present_grade, late_grade, excused_grade, absent_grade, late_after_minutes",
-                ),
-        ]);
+        if (!groupsResponse.ok) {
+            setGroups([]);
+            setGroupRoles({});
+            setGroupForms({});
+            setLoadingPolicies(false);
+            return;
+        }
 
-        const roleMap = Object.fromEntries(
-            ((membershipsData || []) as Membership[]).map((membership) => [
-                membership.group_id,
-                membership.role,
-            ]),
-        );
-
-        const forms = Object.fromEntries(
-            (groupsData || []).map((group) => {
-                const saved = (settingsData || []).find(
-                    (entry) => entry.group_id === group.id,
+        const accessibleGroups = (groupsPayload.groups || []) as Array<Group & { access_role: "owner" | "ta" }>;
+        const settingsEntries = await Promise.all(
+            accessibleGroups.map(async (group) => {
+                const response = await fetch(`/api/groups/${group.id}/grading-settings`);
+                const payload = await response.json();
+                const normalized = normalizeGradingSettings(
+                    (payload.settings || defaultGradingSettings) as GradingSettings,
                 );
-                const normalized = normalizeGradingSettings(saved);
-
                 return [
                     group.id,
                     {
@@ -137,28 +151,36 @@ export default function SettingsPage() {
                                 ? ""
                                 : String(normalized.late_after_minutes),
                     },
-                ];
+                ] as const;
             }),
-        ) as Record<string, GroupSettingsForm>;
+        );
 
-        setGroups(groupsData || []);
+        setGroups(accessibleGroups);
         setGroupRoles(
             Object.fromEntries(
-                (groupsData || []).map((group) => [
-                    group.id,
-                    group.professor_id === user?.id
-                        ? "owner"
-                        : roleMap[group.id] || "ta",
-                ]),
+                accessibleGroups.map((group) => [group.id, group.access_role]),
             ),
         );
-        setGroupForms(forms);
+        setGroupForms(Object.fromEntries(settingsEntries) as Record<string, GroupSettingsForm>);
         setLoadingPolicies(false);
-    }, [supabase]);
+    }, []);
+
+    const fetchBillingSummary = useCallback(async () => {
+        setLoadingBilling(true);
+        const response = await fetch("/api/billing/summary");
+        const payload = await response.json();
+        if (response.ok) {
+            setBillingSummary(payload as BillingSummary);
+        } else {
+            setBillingSummary(null);
+        }
+        setLoadingBilling(false);
+    }, []);
 
     useEffect(() => {
         fetchSettingsData();
-    }, [fetchSettingsData]);
+        fetchBillingSummary();
+    }, [fetchBillingSummary, fetchSettingsData]);
 
     const handleGroupSettingChange = (
         groupId: string,
@@ -195,24 +217,20 @@ export default function SettingsPage() {
             [groupId]: { saving: true, message: "", error: "" },
         }));
 
-        const { error: saveError } = await supabase
-            .from("group_grading_settings")
-            .upsert(
-                {
-                    group_id: groupId,
-                    ...normalized,
-                    updated_at: new Date().toISOString(),
-                },
-                { onConflict: "group_id" },
-            );
+        const response = await fetch(`/api/groups/${groupId}/grading-settings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(normalized),
+        });
+        const payload = await response.json();
 
-        if (saveError) {
+        if (!response.ok) {
             setGroupSaveState((prev) => ({
                 ...prev,
                 [groupId]: {
                     saving: false,
                     message: "",
-                    error: saveError.message,
+                    error: payload.error || "Failed to save grading settings.",
                 },
             }));
             return;
@@ -239,6 +257,38 @@ export default function SettingsPage() {
                 error: "",
             },
         }));
+    };
+
+    const handleUpgrade = async (plan: "plus" | "pro") => {
+        setBillingActionLoading(plan);
+        const response = await fetch("/api/billing/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ plan }),
+        });
+        const payload = await response.json();
+        setBillingActionLoading("");
+
+        if (!response.ok || !payload.url) {
+            setError(payload.error || "Failed to start checkout.");
+            return;
+        }
+
+        window.location.href = payload.url;
+    };
+
+    const handleManageBilling = async () => {
+        setBillingActionLoading("portal");
+        const response = await fetch("/api/billing/portal", { method: "POST" });
+        const payload = await response.json();
+        setBillingActionLoading("");
+
+        if (!response.ok || !payload.url) {
+            setError(payload.error || "Failed to open the billing portal.");
+            return;
+        }
+
+        window.location.href = payload.url;
     };
 
     const handleChangePassword = async (e: React.FormEvent) => {
@@ -467,6 +517,130 @@ export default function SettingsPage() {
                         </Dialog>
                     </div>
                 </div>
+            </section>
+
+            <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+                <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    <CardHeader>
+                        <Badge className="w-fit rounded-full border-primary/20 bg-primary/8 text-primary hover:bg-primary/8">
+                            Billing
+                        </Badge>
+                        <CardTitle>Plan and usage</CardTitle>
+                        <CardDescription>
+                            Track your current plan, usage limits, and upgrade path.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {loadingBilling ? (
+                            <div className="flex items-center justify-center py-10">
+                                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                            </div>
+                        ) : billingSummary ? (
+                            <>
+                                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-medium text-foreground">
+                                                {billingSummary.plan.label}
+                                            </p>
+                                            <p className="mt-1 text-sm text-soft">
+                                                {billingSummary.plan.monthlyPriceLabel} · {billingSummary.subscription.status}
+                                            </p>
+                                        </div>
+                                        <Badge variant="outline" className="uppercase">
+                                            {billingSummary.subscription.plan_tier}
+                                        </Badge>
+                                    </div>
+                                    {billingSummary.subscription.current_period_end && (
+                                        <p className="mt-3 text-sm text-soft">
+                                            Current period ends on{" "}
+                                            {new Date(
+                                                billingSummary.subscription.current_period_end,
+                                            ).toLocaleDateString()}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <div className="rounded-xl border border-border/70 p-4">
+                                        <p className="text-sm text-soft">Groups</p>
+                                        <p className="mt-2 text-2xl font-semibold text-foreground">
+                                            {billingSummary.usage.groups} / {billingSummary.quotas.groups}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-border/70 p-4">
+                                        <p className="text-sm text-soft">Students</p>
+                                        <p className="mt-2 text-2xl font-semibold text-foreground">
+                                            {billingSummary.usage.students} / {billingSummary.quotas.students}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-border/70 p-4">
+                                        <p className="text-sm text-soft">Sessions this month</p>
+                                        <p className="mt-2 text-2xl font-semibold text-foreground">
+                                            {billingSummary.usage.sessionsThisMonth} / {billingSummary.quotas.sessionsPerMonth}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-border/70 p-4">
+                                        <p className="text-sm text-soft">Team members</p>
+                                        <p className="mt-2 text-2xl font-semibold text-foreground">
+                                            {billingSummary.usage.teamMembers} / {billingSummary.quotas.teamMembers}
+                                        </p>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-soft">
+                                Billing information is currently unavailable.
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    <CardHeader>
+                        <CardTitle>Upgrade path</CardTitle>
+                        <CardDescription>
+                            Move to a larger plan when you need more collaboration or advanced exam controls.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <Button
+                            type="button"
+                            className="w-full"
+                            onClick={() => handleUpgrade("plus")}
+                            disabled={billingActionLoading !== ""}
+                        >
+                            {billingActionLoading === "plus" && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Upgrade to Plus
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => handleUpgrade("pro")}
+                            disabled={billingActionLoading !== ""}
+                        >
+                            {billingActionLoading === "pro" && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Upgrade to Pro
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            className="w-full"
+                            onClick={handleManageBilling}
+                            disabled={billingActionLoading !== ""}
+                        >
+                            {billingActionLoading === "portal" && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Manage Billing
+                        </Button>
+                    </CardContent>
+                </Card>
             </section>
 
             <div className="mb-2 flex items-start justify-between gap-4">

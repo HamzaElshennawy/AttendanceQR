@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { requireSessionAccess } from "@/lib/group-access";
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,10 +8,15 @@ const supabaseAdmin = createClient(
 );
 
 export async function GET(
-    request: Request,
+    _request: Request,
     { params }: { params: Promise<{ sessionId: string }> },
 ) {
     const { sessionId } = await params;
+    const access = await requireSessionAccess(sessionId);
+
+    if (!access) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const { data: session } = await supabaseAdmin
         .from("sessions")

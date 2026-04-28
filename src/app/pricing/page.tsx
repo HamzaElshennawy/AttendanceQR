@@ -8,80 +8,64 @@ import { QuorumIcon } from "@/components/QuorumLogo";
 
 const plans = [
     {
-        name: "Starter",
-        price: "$29",
+        name: "Free",
+        price: "$0",
         cadence: "/month",
-        audience: "Individual instructor or single pilot section",
-        summary: "A fast way to run QR attendance and basic coursework without a heavy rollout.",
+        audience: "Individual instructor or small pilot",
+        summary: "Discover the full product surface with strict pilot limits for a single teaching workspace.",
         cta: "Start free",
         href: "/register",
         features: [
-            "1 active teaching workspace",
+            "1 teaching workspace",
             "QR attendance sessions",
-            "Coursework items and grade entry",
-            "CSV or spreadsheet imports",
-            "Basic exports",
+            "Coursework visibility",
+            "Basic attendance exports",
+            "50 students and 10 sessions / month",
         ],
     },
     {
-        name: "Department",
-        price: "$199",
+        name: "Plus",
+        price: "$29",
         cadence: "/month",
-        audience: "Department teams coordinating multiple courses and TAs",
-        summary: "The best balance for shared academic operations, exam setup, and clearer reporting.",
-        cta: "Book a demo",
-        href: "mailto:sales@quorum.app",
+        audience: "Instructors and small teaching teams",
+        summary: "The best balance for coursework operations, collaboration, imports, exports, and larger quotas.",
+        cta: "Upgrade to Plus",
+        href: "/dashboard/settings",
         featured: true,
         features: [
-            "Multiple groups and staff roles",
+            "Up to 5 groups and 500 students",
+            "Team roles and collaboration",
+            "Coursework exports and rich reporting",
+            "Spreadsheet imports",
+            "200 sessions / month",
+        ],
+    },
+    {
+        name: "Pro",
+        price: "$99",
+        cadence: "/month",
+        audience: "Full academic operations",
+        summary: "Unlock exams, advanced controls, premium reporting surfaces, and the full instructor feature set.",
+        cta: "Upgrade to Pro",
+        href: "/dashboard/settings",
+        features: [
+            "Everything in Plus",
             "Exam setup and student exam flow",
-            "Weighted coursework breakdowns",
-            "Attendance and coursework exports",
-            "Priority support",
-        ],
-    },
-    {
-        name: "Faculty",
-        price: "Custom",
-        cadence: "annual",
-        audience: "Faculty-wide deployments with governance and rollout planning",
-        summary: "For broader adoption, implementation planning, and operational consistency across academic units.",
-        cta: "Talk to sales",
-        href: "mailto:sales@quorum.app",
-        features: [
-            "Rollout planning",
-            "Shared implementation support",
-            "Expanded reporting consultation",
-            "Admin coordination workflows",
-            "Procurement-ready engagement",
-        ],
-    },
-    {
-        name: "Enterprise",
-        price: "Custom",
-        cadence: "annual",
-        audience: "Institution-led deployment across departments or campuses",
-        summary: "For institutions that need contractual, security, and onboarding alignment before launch.",
-        cta: "Contact sales",
-        href: "mailto:sales@quorum.app",
-        features: [
-            "Institutional onboarding",
-            "Procurement and security review support",
-            "Higher-touch rollout coordination",
-            "Operational design partnership",
-            "Commercial packaging flexibility",
+            "Advanced exports and controls",
+            "High practical limits",
+            "Future premium features included",
         ],
     },
 ];
 
 const comparisonRows = [
-    ["QR attendance sessions", "Yes", "Yes", "Yes", "Yes"],
-    ["Coursework and grade entry", "Yes", "Yes", "Yes", "Yes"],
-    ["Exam management", "-", "Yes", "Yes", "Yes"],
-    ["Team roles and collaboration", "-", "Yes", "Yes", "Yes"],
-    ["Weighted grading structures", "-", "Yes", "Yes", "Yes"],
-    ["Procurement and rollout support", "-", "Limited", "Yes", "Yes"],
-    ["Commercial flexibility", "-", "-", "Some", "Yes"],
+    ["QR attendance sessions", "Yes", "Yes", "Yes"],
+    ["Coursework and grade entry", "Yes", "Yes", "Yes"],
+    ["Team roles and collaboration", "-", "Yes", "Yes"],
+    ["Coursework exports and reporting", "Basic", "Yes", "Yes"],
+    ["Exam management", "-", "-", "Yes"],
+    ["Group quota", "1", "5", "High"],
+    ["Student quota", "50", "500", "High"],
 ];
 
 export default async function PricingPage() {
@@ -133,19 +117,19 @@ export default async function PricingPage() {
                                         Recommended path
                                     </div>
                                     <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                                        Most academic teams start with
+                                        Most active instructors start with
                                         <span className="mx-1 font-semibold text-foreground">
-                                            Department
+                                            Plus
                                         </span>
-                                        because it covers shared staff workflows, exams, and weighted grading without jumping straight into enterprise rollout.
+                                        because it unlocks collaboration and richer coursework operations without jumping all the way to full exam workflows.
                                     </p>
                                 </div>
                                 <Badge variant="outline" className="w-fit bg-background/90">
-                                    Best for multi-course teams
+                                    Best for growing course teams
                                 </Badge>
                             </div>
                         </div>
-                        <div className="grid gap-5 xl:grid-cols-4">
+                        <div className="grid gap-5 xl:grid-cols-3">
                             {plans.map((plan) => (
                                 <article
                                     key={plan.name}
@@ -180,7 +164,7 @@ export default async function PricingPage() {
                                                 <ArrowRight className="ml-2 h-4 w-4" />
                                             </a>
                                         ) : (
-                                            <Link href={plan.href}>
+                                            <Link href={session ? (plan.name === "Free" ? "/dashboard" : "/dashboard/settings") : plan.href}>
                                                 {plan.cta}
                                                 <ArrowRight className="ml-2 h-4 w-4" />
                                             </Link>
@@ -224,7 +208,7 @@ export default async function PricingPage() {
                             </div>
                         </div>
                         <div className="mt-6 rounded-[24px] border border-border/70 bg-background px-5 py-4 text-sm text-muted-foreground shadow-sm">
-                            Use this comparison for scale and buying-path discussions. If you need implementation help, governance support, or rollout planning, move the conversation to Faculty or Enterprise.
+                            Use this comparison to choose between pilot usage, collaboration, and full exam-enabled operations.
                         </div>
                     </div>
                 </section>
@@ -232,16 +216,16 @@ export default async function PricingPage() {
                     <div className="mx-auto max-w-7xl px-6">
                         <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                             <div className="rounded-[30px] border border-border/70 bg-card px-6 py-7 shadow-sm">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">Buying path</div>
-                                <h2 className="mt-4 font-display text-4xl text-foreground">Two ways to evaluate Quorum.</h2>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">Upgrade path</div>
+                                <h2 className="mt-4 font-display text-4xl text-foreground">A simple self-serve path from pilot to Pro.</h2>
                                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                                     <div className="rounded-[24px] border border-border/70 bg-background px-4 py-4">
-                                        <div className="text-lg font-semibold text-foreground">Self-serve interest</div>
-                                        <p className="mt-2 text-sm leading-7 text-muted-foreground">Best for pilots, individual instructors, and fast experiments where teams want to move quickly.</p>
+                                        <div className="text-lg font-semibold text-foreground">Start on Free</div>
+                                        <p className="mt-2 text-sm leading-7 text-muted-foreground">Best for pilots, evaluation, and a first live classroom rollout with tight usage limits.</p>
                                     </div>
                                     <div className="rounded-[24px] border border-border/70 bg-background px-4 py-4">
-                                        <div className="text-lg font-semibold text-foreground">Institution-led buying</div>
-                                        <p className="mt-2 text-sm leading-7 text-muted-foreground">Best for departments, faculties, and campuses that need implementation conversations, security review, and rollout planning.</p>
+                                        <div className="text-lg font-semibold text-foreground">Scale with paid plans</div>
+                                        <p className="mt-2 text-sm leading-7 text-muted-foreground">Upgrade to Plus for collaboration and Pro for full exam operations and premium controls.</p>
                                     </div>
                                 </div>
                             </div>
@@ -249,8 +233,8 @@ export default async function PricingPage() {
                                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                                     <ShieldCheck className="h-5 w-5" />
                                 </div>
-                                <h2 className="mt-5 font-display text-3xl text-foreground">Need a faculty or enterprise proposal?</h2>
-                                <p className="mt-4 text-sm leading-7 text-muted-foreground">We can tailor a package around rollout support, training, governance expectations, and evaluation requirements.</p>
+                                <h2 className="mt-5 font-display text-3xl text-foreground">Need help choosing the right tier?</h2>
+                                <p className="mt-4 text-sm leading-7 text-muted-foreground">Start with Free, move to Plus when collaboration becomes real, and upgrade to Pro when exams or premium controls become core.</p>
                                 <div className="mt-6 flex flex-wrap gap-3">
                                     <Button asChild size="lg" className="rounded-full px-7">
                                         <a href="mailto:sales@quorum.app">

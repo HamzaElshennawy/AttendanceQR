@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireGroupAccess } from "@/lib/group-access";
+import { checkQuota } from "@/lib/subscriptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type ImportedAttendanceStatus = "present" | "late" | "excused";
@@ -46,6 +47,14 @@ export async function POST(
         return NextResponse.json(
             { error: "No valid session definitions were provided." },
             { status: 400 },
+        );
+    }
+
+    const quota = await checkQuota(access.userId, "sessionsThisMonth", normalizedSessions.length);
+    if (!quota.ok) {
+        return NextResponse.json(
+            { error: quota.message, code: "PLAN_LIMIT_REACHED" },
+            { status: 403 },
         );
     }
 
