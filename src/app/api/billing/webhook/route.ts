@@ -21,9 +21,39 @@ function toIso(seconds?: number | null) {
     return seconds ? new Date(seconds * 1000).toISOString() : null;
 }
 
+async function logWebhookEvent(entry: {
+    stripe_event_id: string;
+    event_type: string;
+    stripe_customer_id?: string | null;
+    stripe_subscription_id?: string | null;
+    user_id?: string | null;
+    resolved_plan_tier?: string | null;
+    status?: string | null;
+    payload?: Record<string, unknown> | null;
+    error?: string | null;
+}) {
+    try {
+        await supabaseAdmin.from("webhook_logs").insert({
+            stripe_event_id: entry.stripe_event_id,
+            event_type: entry.event_type,
+            stripe_customer_id: entry.stripe_customer_id ?? null,
+            stripe_subscription_id: entry.stripe_subscription_id ?? null,
+            user_id: entry.user_id ?? null,
+            resolved_plan_tier: entry.resolved_plan_tier ?? null,
+            status: entry.status ?? null,
+            payload: entry.payload ?? null,
+            error: entry.error ?? null,
+        });
+    } catch (err) {
+        console.error("[webhook] Failed to write webhook_log:", err);
+    }
+}
+
 async function persistSubscription(
     customerId: string,
     subscription: Stripe.Subscription | null,
+    eventId: string,
+    eventType: string,
     overrides?: Partial<{
         status: SubscriptionStatus;
         plan_tier: PlanTier;
@@ -42,10 +72,24 @@ async function persistSubscription(
 
     if (lookupError) {
         console.error("[webhook] DB lookup error for customer", customerId, lookupError);
+        await logWebhookEvent({
+            stripe_event_id: eventId,
+            event_type: eventType,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscription?.id,
+            error: `DB lookup error: ${lookupError.message}`,
+        });
     }
 
     if (!record?.user_id) {
         console.warn("[webhook] No professor_subscriptions row found for stripe_customer_id:", customerId);
+        await logWebhookEvent({
+            stripe_event_id: eventId,
+            event_type: eventType,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscription?.id,
+            error: `No professor_subscriptions row found for stripe_customer_id: ${customerId}`,
+        });
         return;
     }
 
@@ -91,8 +135,34 @@ async function persistSubscription(
 
     if (updateError) {
         console.error("[webhook] DB update error for user", record.user_id, updateError);
+        await logWebhookEvent({
+            stripe_event_id: eventId,
+            event_type: eventType,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscription?.id,
+            user_id: record.user_id,
+            resolved_plan_tier: resolvedTier,
+            status: overrides?.status || status,
+            error: `DB update error: ${updateError.message}`,
+        });
     } else {
         console.log("[webhook] Successfully updated subscription for user", record.user_id, "to tier:", resolvedTier);
+        await logWebhookEvent({
+            stripe_event_id: eventId,
+            event_type: eventType,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscription?.id,
+            user_id: record.user_id,
+            resolved_plan_tier: resolvedTier,
+            status: overrides?.status || status,
+            payload: {
+                priceId,
+                planTierFromMeta,
+                inferredTier: inferPlanTierFromPriceId(priceId),
+                periodStart: toIso(periodStart),
+                periodEnd: toIso(periodEnd),
+            },
+        });
     }
 }
 
@@ -118,6 +188,11 @@ export async function POST(request: Request) {
         event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
     } catch (error) {
         console.error("[webhook] Signature verification failed:", error instanceof Error ? error.message : error);
+        await logWebhookEvent({
+            stripe_event_id: "unknown",
+            event_type: "signature_verification_failed",
+            error: error instanceof Error ? error.message : "Invalid signature.",
+        });
         return NextResponse.json(
             { error: error instanceof Error ? error.message : "Invalid signature." },
             { status: 400 },
@@ -143,9 +218,14 @@ export async function POST(request: Request) {
                     ? await stripe.subscriptions.retrieve(subscriptionId)
                     : null;
                 console.log("[webhook] Retrieved subscription:", subscription?.id, "status:", subscription?.status);
-                await persistSubscription(session.customer, subscription);
+                await persistSubscription(session.customer, subscription, event.id, event.type);
             } else {
                 console.warn("[webhook] checkout.session.completed but customer is not a string:", session.customer);
+                await logWebhookEvent({
+                    stripe_event_id: event.id,
+                    event_type: event.type,
+                    error: `customer is not a string: ${JSON.stringify(session.customer)}`,
+                });
             }
             break;
         }
@@ -159,9 +239,14 @@ export async function POST(request: Request) {
                 metadata: subscription.metadata,
             });
             if (typeof subscription.customer === "string") {
-                await persistSubscription(subscription.customer, subscription);
+                await persistSubscription(subscription.customer, subscription, event.id, event.type);
             } else {
                 console.warn(`[webhook] ${event.type} but customer is not a string:`, subscription.customer);
+                await logWebhookEvent({
+                    stripe_event_id: event.id,
+                    event_type: event.type,
+                    error: `customer is not a string: ${JSON.stringify(subscription.customer)}`,
+                });
             }
             break;
         }
@@ -172,7 +257,7 @@ export async function POST(request: Request) {
                 customerId: subscription.customer,
             });
             if (typeof subscription.customer === "string") {
-                await persistSubscription(subscription.customer, subscription, {
+                await persistSubscription(subscription.customer, subscription, event.id, event.type, {
                     status: "canceled",
                     plan_tier: "free",
                     is_disabled: true,
@@ -182,6 +267,11 @@ export async function POST(request: Request) {
         }
         default:
             console.log("[webhook] Unhandled event type:", event.type);
+            await logWebhookEvent({
+                stripe_event_id: event.id,
+                event_type: event.type,
+                payload: { note: "Unhandled event type" },
+            });
             break;
     }
 
