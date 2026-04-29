@@ -15,6 +15,15 @@ interface Group {
     name: string;
 }
 
+interface BillingSummary {
+    features: {
+        exams: boolean;
+    };
+    plan: {
+        label: string;
+    };
+}
+
 interface AssessmentRow extends Omit<CourseworkAssessment, "session"> {
     session:
         | {
@@ -45,10 +54,11 @@ export default function ExamSetupPage() {
     const [group, setGroup] = useState<Group | null>(null);
     const [assessment, setAssessment] = useState<CourseworkAssessment | null>(null);
     const [loading, setLoading] = useState(true);
+    const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
 
     const loadPage = useCallback(async () => {
         setLoading(true);
-        const [groupRes, assessmentRes] = await Promise.all([
+        const [groupRes, assessmentRes, billingRes] = await Promise.all([
             supabase.from("groups").select("id, name").eq("id", groupId).maybeSingle(),
             supabase
                 .from("coursework_assessments")
@@ -58,6 +68,9 @@ export default function ExamSetupPage() {
                 .eq("group_id", groupId)
                 .eq("id", assessmentId)
                 .maybeSingle(),
+            fetch("/api/billing/summary").then(async (response) =>
+                response.ok ? ((await response.json()) as BillingSummary) : null,
+            ),
         ]);
 
         setGroup((groupRes.data || null) as Group | null);
@@ -66,6 +79,7 @@ export default function ExamSetupPage() {
                 ? normalizeAssessment(assessmentRes.data as AssessmentRow)
                 : null,
         );
+        setBillingSummary(billingRes);
         setLoading(false);
     }, [assessmentId, groupId, supabase]);
 
@@ -133,6 +147,22 @@ export default function ExamSetupPage() {
                     <div className="flex items-center justify-center">
                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
+                </div>
+            ) : billingSummary && !billingSummary.features.exams ? (
+                <div className="rounded-[28px] border border-border/80 bg-card p-8 shadow-sm">
+                    <Badge variant="warning" className="w-fit">
+                        Pro feature
+                    </Badge>
+                    <h2 className="mt-4 text-2xl font-semibold text-foreground">
+                        Exam setup is locked on your current plan
+                    </h2>
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                        Upgrade to Pro to create and manage student exam workflows. Your current plan is{" "}
+                        {billingSummary.plan.label}.
+                    </p>
+                    <Button asChild className="mt-6">
+                        <Link href="/dashboard/settings">Open billing settings</Link>
+                    </Button>
                 </div>
             ) : (
                 <ExamSetupEditor assessment={assessment} onSaved={loadPage} />

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireGroupAccess } from "@/lib/group-access";
+import { checkQuota, requireFeature } from "@/lib/subscriptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export async function POST(
@@ -16,6 +17,22 @@ export async function POST(
     if (access.role !== "owner") {
         return NextResponse.json(
             { error: "Only owners can manage team members." },
+            { status: 403 },
+        );
+    }
+
+    const feature = await requireFeature(access.userId, "team_members");
+    if (!feature.ok) {
+        return NextResponse.json(
+            { error: "Upgrade to Plus or Pro to add team members.", code: "PLAN_FEATURE_REQUIRED" },
+            { status: 403 },
+        );
+    }
+
+    const quota = await checkQuota(access.userId, "teamMembers", 1);
+    if (!quota.ok) {
+        return NextResponse.json(
+            { error: quota.message, code: "PLAN_LIMIT_REACHED" },
             { status: 403 },
         );
     }

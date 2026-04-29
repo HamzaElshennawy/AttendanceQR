@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { isCurrentSessionTokenValid } from "@/lib/attendance-security";
 import { defaultGradingSettings, shouldAutoMarkLate } from "@/lib/grading-settings";
 
 // Use service role to bypass RLS for attendance operations
@@ -80,18 +81,19 @@ export async function POST(request: Request) {
     }
 
     // 2. Validate token
-    if (session.current_token !== token) {
-        const tokenExpiry = new Date(session.token_expires_at);
-        const now = new Date();
-
-        if (now > tokenExpiry) {
-            return NextResponse.json(
-                {
-                    error: "QR code has expired. Please scan the current QR code on the screen.",
-                },
-                { status: 400 },
-            );
-        }
+    if (
+        !isCurrentSessionTokenValid({
+            currentToken: session.current_token,
+            providedToken: token,
+            tokenExpiresAt: session.token_expires_at,
+        })
+    ) {
+        return NextResponse.json(
+            {
+                error: "QR code is invalid or expired. Please scan the current QR code on the screen.",
+            },
+            { status: 400 },
+        );
     }
 
     // 3. Validate student exists in the group

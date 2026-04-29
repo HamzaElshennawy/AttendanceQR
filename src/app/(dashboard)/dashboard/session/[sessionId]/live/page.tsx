@@ -113,6 +113,11 @@ export default function LiveSessionPage() {
             rotationTimerRef.current = setInterval(() => {
                 setRotationCountdown((prev) => (prev > 0 ? prev - 1 : 0));
             }, 1000);
+        } else {
+            // Static QR: poll less frequently to refresh token expiry and attendance counts
+            intervalRef.current = setInterval(() => {
+                rotateToken();
+            }, 30_000);
         }
 
         return () => {
@@ -165,10 +170,9 @@ export default function LiveSessionPage() {
     }, [qrFullscreenOpen]);
 
     const handleEndSession = async () => {
-        await supabase
-            .from("sessions")
-            .update({ is_active: false })
-            .eq("id", sessionId);
+        await fetch(`/api/sessions/${sessionId}/end`, {
+            method: "POST",
+        });
         setSessionEnded(true);
         if (intervalRef.current) clearInterval(intervalRef.current);
     };

@@ -86,6 +86,16 @@ interface TeamMember {
     role: "owner" | "ta";
 }
 
+interface BillingSummary {
+    features: {
+        team_members: boolean;
+        advanced_exports: boolean;
+    };
+    plan: {
+        label: string;
+    };
+}
+
 interface Session {
     id: string;
     title: string | null;
@@ -172,6 +182,7 @@ export default function GroupDetailPage() {
     const [loading, setLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState("");
     const [team, setTeam] = useState<TeamMember[]>([]);
+    const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
     const [gradingSettings, setGradingSettings] =
         useState<GradingSettings>(defaultGradingSettings);
     const [studentSearch, setStudentSearch] = useState("");
@@ -348,6 +359,17 @@ export default function GroupDetailPage() {
         );
     }, [groupId]);
 
+    const fetchBillingSummary = useCallback(async () => {
+        const res = await fetch("/api/billing/summary");
+        if (!res.ok) {
+            setBillingSummary(null);
+            return;
+        }
+
+        const data = await res.json();
+        setBillingSummary(data as BillingSummary);
+    }, []);
+
     useEffect(() => {
         Promise.all([
             fetchCurrentUser(),
@@ -356,8 +378,10 @@ export default function GroupDetailPage() {
             fetchSessions(),
             fetchTeam(),
             fetchGradingSettings(),
+            fetchBillingSummary(),
         ]).then(() => setLoading(false));
     }, [
+        fetchBillingSummary,
         fetchCurrentUser,
         fetchGroup,
         fetchStudents,
@@ -370,10 +394,21 @@ export default function GroupDetailPage() {
     const handleRenameGroup = async (e: React.FormEvent) => {
         e.preventDefault();
         setRenaming(true);
-        await supabase
-            .from("groups")
-            .update({ name: newGroupName })
-            .eq("id", groupId);
+        const response = await fetch(`/api/groups/${groupId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: newGroupName }),
+        });
+        if (!response.ok) {
+            const data = await response.json();
+            await showAlert({
+                title: "Failed To Rename Group",
+                description: data.error || "Failed to rename group.",
+                variant: "error",
+            });
+            setRenaming(false);
+            return;
+        }
         setRenaming(false);
         setRenameOpen(false);
         fetchGroup();
@@ -383,23 +418,33 @@ export default function GroupDetailPage() {
     const handleAddStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         setAddingStudent(true);
-        const { error } = await supabase.from("students").insert({
-            group_id: groupId,
-            name: studentName,
-            university_id: studentId,
+        const response = await fetch(`/api/groups/${groupId}/students`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: studentName,
+                university_id: studentId,
+            }),
         });
-        if (error) {
-            if (error.code === "23505")
+        const data = await response.json();
+        if (!response.ok) {
+            if (data.code === "23505")
                 await showAlert({
                     title: "Student Already Exists",
                     description:
                         "A student with this ID already exists in this group.",
                     variant: "warning",
                 });
+            else if (data.code === "PLAN_LIMIT_REACHED")
+                await showAlert({
+                    title: "Plan Limit Reached",
+                    description: data.error,
+                    variant: "warning",
+                });
             else
                 await showAlert({
                     title: "Failed To Add Student",
-                    description: error.message,
+                    description: data.error || "Failed to add student.",
                     variant: "error",
                 });
         } else {
@@ -418,7 +463,18 @@ export default function GroupDetailPage() {
             confirmLabel: "Remove Student",
         });
         if (!confirmed) return;
-        await supabase.from("students").delete().eq("id", id);
+        const response = await fetch(`/api/groups/${groupId}/students/${id}`, {
+            method: "DELETE",
+        });
+        if (!response.ok) {
+            const data = await response.json();
+            await showAlert({
+                title: "Failed To Remove Student",
+                description: data.error || "Failed to remove student.",
+                variant: "error",
+            });
+            return;
+        }
         fetchStudents();
     };
 
@@ -426,10 +482,27 @@ export default function GroupDetailPage() {
         e.preventDefault();
         if (!editStudent) return;
         setEditingStudent(true);
-        await supabase
-            .from("students")
-            .update({ name: editStudentName, university_id: editStudentId })
-            .eq("id", editStudent.id);
+        const response = await fetch(
+            `/api/groups/${groupId}/students/${editStudent.id}`,
+            {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: editStudentName,
+                    university_id: editStudentId,
+                }),
+            },
+        );
+        if (!response.ok) {
+            const data = await response.json();
+            await showAlert({
+                title: "Failed To Edit Student",
+                description: data.error || "Failed to edit student.",
+                variant: "error",
+            });
+            setEditingStudent(false);
+            return;
+        }
         setEditingStudent(false);
         setEditStudentOpen(false);
         fetchStudents();
@@ -509,7 +582,21 @@ export default function GroupDetailPage() {
             variant: "error",
         });
         if (!confirmed) return;
-        await supabase.from("sessions").delete().eq("id", sessionId);
+        const response = await fetch(
+            `/api/groups/${groupId}/sessions/${sessionId}`,
+            {
+                method: "DELETE",
+            },
+        );
+        if (!response.ok) {
+            const data = await response.json();
+            await showAlert({
+                title: "Failed To Delete Session",
+                description: data.error || "Failed to delete session.",
+                variant: "error",
+            });
+            return;
+        }
         fetchSessions();
     };
 
@@ -535,18 +622,29 @@ export default function GroupDetailPage() {
         const studentsToInsert = csvData
             .filter((row) => row[nameIndex]?.trim() && row[idIndex]?.trim())
             .map((row) => ({
-                group_id: groupId,
                 name: row[nameIndex].trim(),
                 university_id: row[idIndex].trim(),
             }));
-        let success = 0;
-        let skipped = 0;
-        for (const student of studentsToInsert) {
-            const { error } = await supabase.from("students").insert(student);
-            if (error) skipped++;
-            else success++;
+        const response = await fetch(`/api/groups/${groupId}/students/import`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ students: studentsToInsert }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            await showAlert({
+                title:
+                    data.code === "PLAN_LIMIT_REACHED"
+                        ? "Plan Limit Reached"
+                        : "Failed To Import Students",
+                description: data.error || "Failed to import students.",
+                variant:
+                    data.code === "PLAN_LIMIT_REACHED" ? "warning" : "error",
+            });
+            setImporting(false);
+            return;
         }
-        setImportResult({ success, skipped });
+        setImportResult({ success: data.success || 0, skipped: data.skipped || 0 });
         setImporting(false);
         fetchStudents();
     };
@@ -806,14 +904,25 @@ export default function GroupDetailPage() {
         sessionData.qr_rotating = qrRotating;
         sessionData.rotation_interval_seconds = parseInt(rotationInterval);
 
-        const { data, error } = await supabase
-            .from("sessions")
-            .insert(sessionData)
-            .select()
-            .single();
+        const response = await fetch(`/api/groups/${groupId}/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sessionData),
+        });
+        const data = await response.json();
 
-        if (!error && data) {
-            router.push(`/dashboard/session/${data.id}/live`);
+        if (response.ok && data.session) {
+            router.push(`/dashboard/session/${data.session.id}/live`);
+        } else if (!response.ok) {
+            await showAlert({
+                title:
+                    data.code === "PLAN_LIMIT_REACHED"
+                        ? "Plan Limit Reached"
+                        : "Failed To Start Session",
+                description: data.error || "Failed to start session.",
+                variant:
+                    data.code === "PLAN_LIMIT_REACHED" ? "warning" : "error",
+            });
         }
         setStartingSession(false);
     };
@@ -2896,7 +3005,7 @@ export default function GroupDetailPage() {
                                     </p>
                                 </div>
 
-                                {isOwner ? (
+                                {isOwner && billingSummary?.features.team_members ? (
                                     <Dialog
                                         open={teamOpen}
                                         onOpenChange={setTeamOpen}
@@ -2990,8 +3099,9 @@ export default function GroupDetailPage() {
                                     </Dialog>
                                 ) : (
                                     <div className="rounded-2xl border border-dashed border-border/70 bg-transparent p-4 text-sm text-soft">
-                                        Only owners can invite or remove team
-                                        members for this group.
+                                        {isOwner
+                                            ? `Upgrade to Plus or Pro to add team members. Current plan: ${billingSummary?.plan.label || "Free"}.`
+                                            : "Only owners can invite or remove team members for this group."}
                                     </div>
                                 )}
                             </CardContent>

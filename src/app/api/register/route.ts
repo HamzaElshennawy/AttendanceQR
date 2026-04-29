@@ -43,5 +43,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
 
+  const { error: subscriptionError } = await supabaseAdmin
+    .from("professor_subscriptions")
+    .insert({
+      user_id: data.user.id,
+      plan_tier: "free",
+      status: "free",
+      cancel_at_period_end: false,
+      is_disabled: false,
+    });
+
+  if (subscriptionError) {
+    await supabaseAdmin.from("professors").delete().eq("id", data.user.id);
+    await supabaseAdmin.auth.admin.deleteUser(data.user.id);
+    return NextResponse.json({ error: subscriptionError.message }, { status: 500 });
+  }
+
   return NextResponse.json({ success: true });
 }

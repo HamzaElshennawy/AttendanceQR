@@ -119,6 +119,9 @@ export default function RegisterPage() {
               required
               minLength={6}
             />
+            <p className="text-xs text-soft">
+              New accounts start on the Free plan with small-pilot usage limits.
+            </p>
           </div>
           {error && (
             <p className="rounded-xl border border-destructive/15 bg-destructive/5 px-3 py-2 text-sm text-destructive">

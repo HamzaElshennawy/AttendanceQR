@@ -6,6 +6,7 @@ import {
 } from "@/lib/exam-service";
 import { getPublishedExamQuestions } from "@/lib/exam-service";
 import { formatExamWindow } from "@/lib/exams";
+import { requireFeature } from "@/lib/subscriptions";
 
 export async function GET(
     _request: Request,
@@ -16,6 +17,14 @@ export async function GET(
 
     if (!exam) {
         return NextResponse.json({ error: "Assessment not found." }, { status: 404 });
+    }
+
+    const feature = await requireFeature(exam.assessment.professor_id, "exams");
+    if (!feature.ok) {
+        return NextResponse.json(
+            { error: "Exam access is not enabled on the current plan." },
+            { status: 403 },
+        );
     }
 
     const questions = await getPublishedExamQuestions(assessmentId);
@@ -58,6 +67,19 @@ export async function POST(
         return NextResponse.json(
             { error: "University ID is required." },
             { status: 400 },
+        );
+    }
+
+    const exam = await getAssessmentWithExamConfig(assessmentId);
+    if (!exam) {
+        return NextResponse.json({ error: "Assessment not found." }, { status: 404 });
+    }
+
+    const feature = await requireFeature(exam.assessment.professor_id, "exams");
+    if (!feature.ok) {
+        return NextResponse.json(
+            { error: "Exam access is not enabled on the current plan." },
+            { status: 403 },
         );
     }
 

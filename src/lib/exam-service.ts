@@ -18,7 +18,7 @@ export async function getAssessmentWithExamConfig(assessmentId: string) {
     const { data, error } = await supabaseAdmin
         .from("coursework_assessments")
         .select(
-            "id, group_id, session_id, title, max_score, exam:assessment_exam_configs(*)",
+            "id, group_id, session_id, title, max_score, groups!inner(professor_id), exam:assessment_exam_configs(*)",
         )
         .eq("id", assessmentId)
         .single();
@@ -34,6 +34,11 @@ export async function getAssessmentWithExamConfig(assessmentId: string) {
             session_id: (data.session_id as string | null) ?? null,
             title: data.title as string,
             max_score: Number(data.max_score || 0),
+            professor_id: Array.isArray(data.groups)
+                ? ((data.groups[0] as { professor_id?: string } | undefined)
+                      ?.professor_id ?? "")
+                : ((data.groups as { professor_id?: string } | null)
+                      ?.professor_id ?? ""),
         },
         config: Array.isArray(data.exam)
             ? (data.exam[0] as AssessmentExamConfig | null)

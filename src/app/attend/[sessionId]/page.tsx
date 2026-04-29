@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,24 +35,7 @@ function AttendForm() {
     const [status, setStatus] = useState<Status>("idle");
     const [message, setMessage] = useState("");
     const [studentName, setStudentName] = useState("");
-    const [sessionHasLocation, setSessionHasLocation] = useState(false);
     const [locationStatus, setLocationStatus] = useState("");
-
-    // Check if session requires location
-    useEffect(() => {
-        const checkSession = async () => {
-            try {
-                const res = await fetch(`/api/sessions/${sessionId}/info`);
-                const data = await res.json();
-                if (data.has_location) {
-                    setSessionHasLocation(true);
-                }
-            } catch {
-                // Silently fail — location check is optional
-            }
-        };
-        checkSession();
-    }, [sessionId]);
 
     const getLocation = (): Promise<{
         latitude: number;
@@ -107,20 +90,16 @@ function AttendForm() {
             fingerprint = "fallback_" + Math.abs(hash).toString(36);
         }
 
-        // Get location if session requires it
         let latitude: number | null = null;
         let longitude: number | null = null;
-
-        if (sessionHasLocation) {
-            setStatus("getting_location");
-            setLocationStatus("Getting your location...");
-            const location = await getLocation();
-            if (location) {
-                latitude = location.latitude;
-                longitude = location.longitude;
-            }
-            setStatus("loading");
+        setStatus("getting_location");
+        setLocationStatus("Checking for location if this session requires it...");
+        const location = await getLocation();
+        if (location) {
+            latitude = location.latitude;
+            longitude = location.longitude;
         }
+        setStatus("loading");
 
         try {
             const res = await fetch("/api/attend", {
@@ -223,17 +202,15 @@ function AttendForm() {
                                 Use the same university ID registered in your group. Your check-in will be validated for this session only.
                             </p>
                         </div>
-                        {sessionHasLocation && (
-                            <div className="rounded-2xl border border-primary/15 bg-primary/6 px-4 py-3 text-left">
-                                <div className="flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-primary">
-                                    <MapPin className="h-4 w-4" />
-                                    Location required
-                                </div>
-                                <p className="mt-2 text-sm text-soft">
-                                    This session needs location access to complete attendance.
-                                </p>
+                        <div className="rounded-2xl border border-primary/15 bg-primary/6 px-4 py-3 text-left">
+                            <div className="flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-primary">
+                                <MapPin className="h-4 w-4" />
+                                Location-aware validation
                             </div>
-                        )}
+                            <p className="mt-2 text-sm text-soft">
+                                If this session uses location validation, your browser may ask for location access during check-in.
+                            </p>
+                        </div>
                     </div>
 
                     <form
