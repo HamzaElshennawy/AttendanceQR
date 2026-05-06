@@ -52,14 +52,22 @@ export default function ExamSetupPage() {
     const assessmentId = params.assessmentId as string;
     const supabase = createClient();
     const [group, setGroup] = useState<Group | null>(null);
-    const [assessment, setAssessment] = useState<CourseworkAssessment | null>(null);
+    const [assessment, setAssessment] = useState<CourseworkAssessment | null>(
+        null,
+    );
     const [loading, setLoading] = useState(true);
-    const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
+    const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(
+        null,
+    );
 
     const loadPage = useCallback(async () => {
         setLoading(true);
         const [groupRes, assessmentRes, billingRes] = await Promise.all([
-            supabase.from("groups").select("id, name").eq("id", groupId).maybeSingle(),
+            supabase
+                .from("groups")
+                .select("id, name")
+                .eq("id", groupId)
+                .maybeSingle(),
             supabase
                 .from("coursework_assessments")
                 .select(
@@ -69,7 +77,9 @@ export default function ExamSetupPage() {
                 .eq("id", assessmentId)
                 .maybeSingle(),
             fetch("/api/billing/summary").then(async (response) =>
-                response.ok ? ((await response.json()) as BillingSummary) : null,
+                response.ok
+                    ? ((await response.json()) as BillingSummary)
+                    : null,
             ),
         ]);
 
@@ -94,18 +104,28 @@ export default function ExamSetupPage() {
         <div className="space-y-6">
             <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                    <Link href="/dashboard" className="transition-colors hover:text-primary">
+                    <Link
+                        href="/dashboard"
+                        className="transition-colors hover:text-primary"
+                    >
                         Dashboard
                     </Link>
                     <ChevronRight className="h-3.5 w-3.5" />
-                    <Link href={`/dashboard/groups/${groupId}`} className="transition-colors hover:text-primary">
+                    <Link
+                        href={`/dashboard/groups/${groupId}`}
+                        className="transition-colors hover:text-primary"
+                    >
                         {group?.name || "Group"}
                     </Link>
                     <ChevronRight className="h-3.5 w-3.5" />
                     <span className="text-primary">Exam setup</span>
                 </div>
 
-                <Button asChild variant="ghost" className="w-fit px-0 text-muted-foreground hover:text-foreground">
+                <Button
+                    asChild
+                    variant="ghost"
+                    className="w-fit px-0 text-muted-foreground hover:text-foreground"
+                >
                     <Link href={`/dashboard/groups/${groupId}`}>
                         <ArrowLeft className="mr-2 h-4 w-4" />
                         Back to group hub
@@ -116,14 +136,20 @@ export default function ExamSetupPage() {
             <section className="rounded-[30px] border border-border/80 bg-card px-6 py-6 shadow-sm md:px-8">
                 <div className="flex flex-wrap items-start justify-between gap-5">
                     <div className="space-y-3">
-                        <Badge variant="outline" className="bg-primary/6 text-primary">
+                        <Badge
+                            variant="outline"
+                            className="bg-primary/6 text-primary"
+                        >
                             Instructor workflow
                         </Badge>
                         <div className="space-y-2">
-                            <h1 className="font-display text-4xl text-foreground">Exam setup</h1>
+                            <h1 className="font-display text-4xl text-foreground">
+                                Exam setup
+                            </h1>
                             <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                                Build the exam structure, confirm student-facing rules, and review launch
-                                confidence before the assessment goes live.
+                                Build the exam structure, confirm student-facing
+                                rules, and review launch confidence before the
+                                assessment goes live.
                             </p>
                         </div>
                     </div>
@@ -136,7 +162,9 @@ export default function ExamSetupPage() {
                         </div>
                         <p className="mt-2">
                             {group?.name || "Group"}
-                            {assessment?.session?.title ? ` · ${assessment.session.title}` : ""}
+                            {assessment?.session?.title
+                                ? ` · ${assessment.session.title}`
+                                : ""}
                         </p>
                     </div>
                 </div>
@@ -150,22 +178,34 @@ export default function ExamSetupPage() {
                 </div>
             ) : billingSummary && !billingSummary.features.exams ? (
                 <div className="rounded-[28px] border border-border/80 bg-card p-8 shadow-sm">
-                    <Badge variant="warning" className="w-fit">
+                    <Badge
+                        variant="warning"
+                        className="w-fit"
+                    >
                         Pro feature
                     </Badge>
                     <h2 className="mt-4 text-2xl font-semibold text-foreground">
                         Exam setup is locked on your current plan
                     </h2>
                     <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                        Upgrade to Pro to create and manage student exam workflows. Your current plan is{" "}
+                        Upgrade to Pro to create and manage student exam
+                        workflows. Your current plan is{" "}
                         {billingSummary.plan.label}.
                     </p>
-                    <Button asChild className="mt-6">
-                        <Link href="/dashboard/settings">Open billing settings</Link>
+                    <Button
+                        asChild
+                        className="mt-6"
+                    >
+                        <Link href="/dashboard/settings">
+                            Open billing settings
+                        </Link>
                     </Button>
                 </div>
             ) : (
-                <ExamSetupEditor assessment={assessment} onSaved={loadPage} />
+                <ExamSetupEditor
+                    assessment={assessment}
+                    onSaved={loadPage}
+                />
             )}
         </div>
     );

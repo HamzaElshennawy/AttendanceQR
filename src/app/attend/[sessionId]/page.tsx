@@ -15,7 +15,7 @@ import {
     ShieldCheck,
     XCircle,
 } from "lucide-react";
-import FingerprintJS from "@fingerprintjs/fingerprintjs";
+import { getDeviceIdentity } from "@/lib/device-identity";
 
 type Status =
     | "idle"
@@ -65,30 +65,8 @@ function AttendForm() {
 
         setStatus("loading");
 
-        // Generate fingerprint using FingerprintJS
-        let fingerprint = "";
-        try {
-            const fp = await FingerprintJS.load();
-            const result = await fp.get();
-            fingerprint = result.visitorId;
-        } catch {
-            // Fallback: simple hash from basic browser signals
-            const components = [
-                navigator.userAgent,
-                navigator.language,
-                screen.width + "x" + screen.height,
-                screen.colorDepth,
-                Intl.DateTimeFormat().resolvedOptions().timeZone,
-                navigator.hardwareConcurrency || "",
-                (navigator as unknown as { deviceMemory?: number }).deviceMemory || "",
-            ].join("|");
-            let hash = 0;
-            for (let i = 0; i < components.length; i++) {
-                hash = (hash << 5) - hash + components.charCodeAt(i);
-                hash |= 0;
-            }
-            fingerprint = "fallback_" + Math.abs(hash).toString(36);
-        }
+        // Get both persistent device UUID and FingerprintJS visitorId
+        const identity = await getDeviceIdentity();
 
         let latitude: number | null = null;
         let longitude: number | null = null;
@@ -111,7 +89,8 @@ function AttendForm() {
                     token,
                     latitude,
                     longitude,
-                    fingerprint,
+                    fingerprint: identity.fingerprint,
+                    device_id: identity.deviceId,
                 }),
             });
 

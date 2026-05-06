@@ -143,7 +143,7 @@ export function ExamSetupEditor({
             supabase
                 .from("assessment_attempts")
                 .select(
-                    "id, assessment_id, student_id, university_id, student_name, status, attempt_number, started_at, deadline_at, submitted_at, last_seen_at, current_index, access_token, question_order, choice_order, device_fingerprint, score, max_score, auto_graded_score",
+                    "id, assessment_id, student_id, university_id, student_name, status, attempt_number, started_at, deadline_at, submitted_at, last_seen_at, current_index, access_token, question_order, choice_order, device_fingerprint, device_id, score, max_score, auto_graded_score",
                 )
                 .eq("assessment_id", assessment.id)
                 .order("started_at", { ascending: false }),

@@ -53,37 +53,37 @@ interface GroupSettingsForm {
     late_after_minutes: string;
 }
 
-interface BillingSummary {
-    subscription: {
-        plan_tier: "free" | "plus" | "pro";
-        status: string;
-        current_period_end: string | null;
-        cancel_at_period_end: boolean;
-    };
-    plan: {
-        label: string;
-        monthlyPriceLabel: string;
-    };
-    usage: {
-        groups: number;
-        students: number;
-        sessionsThisMonth: number;
-        teamMembers: number;
-    };
-    quotas: {
-        groups: number;
-        students: number;
-        sessionsPerMonth: number;
-        teamMembers: number;
-    };
-    features: {
-        coursework: boolean;
-        team_members: boolean;
-        rich_reporting: boolean;
-        advanced_exports: boolean;
-        exams: boolean;
-    };
-}
+//interface BillingSummary {
+//    subscription: {
+//        plan_tier: "free" | "plus" | "pro";
+//        status: string;
+//        current_period_end: string | null;
+//        cancel_at_period_end: boolean;
+//    };
+//    plan: {
+//        label: string;
+//        monthlyPriceLabel: string;
+//    };
+//    usage: {
+//        groups: number;
+//        students: number;
+//        sessionsThisMonth: number;
+//        teamMembers: number;
+//    };
+//    quotas: {
+//        groups: number;
+//        students: number;
+//        sessionsPerMonth: number;
+//        teamMembers: number;
+//    };
+//    features: {
+//        coursework: boolean;
+//        team_members: boolean;
+//        rich_reporting: boolean;
+//        advanced_exports: boolean;
+//        exams: boolean;
+//    };
+//}
 
 const defaultFormValues: GroupSettingsForm = {
     present_grade: String(defaultGradingSettings.present_grade),
@@ -102,19 +102,21 @@ export default function SettingsPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [groups, setGroups] = useState<Group[]>([]);
-    const [groupRoles, setGroupRoles] = useState<Record<string, "owner" | "ta">>(
-        {},
-    );
-    const [groupForms, setGroupForms] = useState<Record<string, GroupSettingsForm>>(
-        {},
-    );
+    const [groupRoles, setGroupRoles] = useState<
+        Record<string, "owner" | "ta">
+    >({});
+    const [groupForms, setGroupForms] = useState<
+        Record<string, GroupSettingsForm>
+    >({});
     const [groupSaveState, setGroupSaveState] = useState<
         Record<string, { saving: boolean; message: string; error: string }>
     >({});
     const [loadingPolicies, setLoadingPolicies] = useState(true);
-    const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
+    //const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
     const [loadingBilling, setLoadingBilling] = useState(true);
-    const [billingActionLoading, setBillingActionLoading] = useState<"" | "plus" | "pro" | "portal">("");
+    const [billingActionLoading, setBillingActionLoading] = useState<
+        "" | "plus" | "pro" | "portal"
+    >("");
     const router = useRouter();
     const supabase = createClient();
 
@@ -131,13 +133,18 @@ export default function SettingsPage() {
             return;
         }
 
-        const accessibleGroups = (groupsPayload.groups || []) as Array<Group & { access_role: "owner" | "ta" }>;
+        const accessibleGroups = (groupsPayload.groups || []) as Array<
+            Group & { access_role: "owner" | "ta" }
+        >;
         const settingsEntries = await Promise.all(
             accessibleGroups.map(async (group) => {
-                const response = await fetch(`/api/groups/${group.id}/grading-settings`);
+                const response = await fetch(
+                    `/api/groups/${group.id}/grading-settings`,
+                );
                 const payload = await response.json();
                 const normalized = normalizeGradingSettings(
-                    (payload.settings || defaultGradingSettings) as GradingSettings,
+                    (payload.settings ||
+                        defaultGradingSettings) as GradingSettings,
                 );
                 return [
                     group.id,
@@ -161,7 +168,12 @@ export default function SettingsPage() {
                 accessibleGroups.map((group) => [group.id, group.access_role]),
             ),
         );
-        setGroupForms(Object.fromEntries(settingsEntries) as Record<string, GroupSettingsForm>);
+        setGroupForms(
+            Object.fromEntries(settingsEntries) as Record<
+                string,
+                GroupSettingsForm
+            >,
+        );
         setLoadingPolicies(false);
     }, []);
 
@@ -170,9 +182,9 @@ export default function SettingsPage() {
         const response = await fetch("/api/billing/summary");
         const payload = await response.json();
         if (response.ok) {
-            setBillingSummary(payload as BillingSummary);
+            //setBillingSummary(payload as BillingSummary);
         } else {
-            setBillingSummary(null);
+            //setBillingSummary(null);
         }
         setLoadingBilling(false);
     }, []);
@@ -217,11 +229,14 @@ export default function SettingsPage() {
             [groupId]: { saving: true, message: "", error: "" },
         }));
 
-        const response = await fetch(`/api/groups/${groupId}/grading-settings`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(normalized),
-        });
+        const response = await fetch(
+            `/api/groups/${groupId}/grading-settings`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(normalized),
+            },
+        );
         const payload = await response.json();
 
         if (!response.ok) {
@@ -374,8 +389,8 @@ export default function SettingsPage() {
                         </h1>
                         <p className="mt-3 max-w-3xl text-sm leading-6 text-soft">
                             Manage grading policies, late rules, and account
-                            security with clearer grouped settings and safer save
-                            flows.
+                            security with clearer grouped settings and safer
+                            save flows.
                         </p>
                     </div>
                 </div>
@@ -388,10 +403,12 @@ export default function SettingsPage() {
                         Account access
                     </h2>
                     <p className="mt-2 text-sm leading-6 text-soft">
-                        Keep your teaching workspace protected by rotating your password when needed.
+                        Keep your teaching workspace protected by rotating your
+                        password when needed.
                     </p>
                     <div className="mt-5 rounded-2xl border border-border/70 bg-transparent px-4 py-4 text-sm text-soft">
-                        Password changes apply to your full Quorum account and affect access across all groups.
+                        Password changes apply to your full Quorum account and
+                        affect access across all groups.
                     </div>
                     <div className="mt-5">
                         <Dialog
@@ -421,8 +438,8 @@ export default function SettingsPage() {
                                 <DialogHeader>
                                     <DialogTitle>Change Password</DialogTitle>
                                     <DialogDescription>
-                                        Update your password to keep your account
-                                        secure.
+                                        Update your password to keep your
+                                        account secure.
                                     </DialogDescription>
                                 </DialogHeader>
                                 <form
@@ -439,7 +456,9 @@ export default function SettingsPage() {
                                             placeholder="••••••••"
                                             value={currentPassword}
                                             onChange={(e) =>
-                                                setCurrentPassword(e.target.value)
+                                                setCurrentPassword(
+                                                    e.target.value,
+                                                )
                                             }
                                             required
                                         />
@@ -474,7 +493,9 @@ export default function SettingsPage() {
                                             placeholder="••••••••"
                                             value={confirmPassword}
                                             onChange={(e) =>
-                                                setConfirmPassword(e.target.value)
+                                                setConfirmPassword(
+                                                    e.target.value,
+                                                )
                                             }
                                             required
                                         />
@@ -498,7 +519,9 @@ export default function SettingsPage() {
                                         <Button
                                             type="button"
                                             variant="outline"
-                                            onClick={() => setPasswordDialogOpen(false)}
+                                            onClick={() =>
+                                                setPasswordDialogOpen(false)
+                                            }
                                         >
                                             Cancel
                                         </Button>
@@ -520,131 +543,148 @@ export default function SettingsPage() {
             </section>
 
             <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-                <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
-                    <CardHeader>
-                        <Badge className="w-fit rounded-full border-primary/20 bg-primary/8 text-primary hover:bg-primary/8">
-                            Billing
-                        </Badge>
-                        <CardTitle>Plan and usage</CardTitle>
-                        <CardDescription>
-                            Track your current plan, usage limits, and upgrade path.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {loadingBilling ? (
-                            <div className="flex items-center justify-center py-10">
-                                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                            </div>
-                        ) : billingSummary ? (
-                            <>
-                                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-sm font-medium text-foreground">
-                                                {billingSummary.plan.label}
-                                            </p>
-                                            <p className="mt-1 text-sm text-soft">
-                                                {billingSummary.plan.monthlyPriceLabel} · {billingSummary.subscription.status}
-                                            </p>
-                                        </div>
-                                        <Badge variant="outline" className="uppercase">
-                                            {billingSummary.subscription.plan_tier}
-                                        </Badge>
-                                    </div>
-                                    {billingSummary.subscription.current_period_end && (
-                                        <p className="mt-3 text-sm text-soft">
-                                            Current period ends on{" "}
-                                            {new Date(
-                                                billingSummary.subscription.current_period_end,
-                                            ).toLocaleDateString()}
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="grid gap-3 md:grid-cols-2">
-                                    <div className="rounded-xl border border-border/70 p-4">
-                                        <p className="text-sm text-soft">Groups</p>
-                                        <p className="mt-2 text-2xl font-semibold text-foreground">
-                                            {billingSummary.usage.groups} / {billingSummary.quotas.groups}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-xl border border-border/70 p-4">
-                                        <p className="text-sm text-soft">Students</p>
-                                        <p className="mt-2 text-2xl font-semibold text-foreground">
-                                            {billingSummary.usage.students} / {billingSummary.quotas.students}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-xl border border-border/70 p-4">
-                                        <p className="text-sm text-soft">Sessions this month</p>
-                                        <p className="mt-2 text-2xl font-semibold text-foreground">
-                                            {billingSummary.usage.sessionsThisMonth} / {billingSummary.quotas.sessionsPerMonth}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-xl border border-border/70 p-4">
-                                        <p className="text-sm text-soft">Team members</p>
-                                        <p className="mt-2 text-2xl font-semibold text-foreground">
-                                            {billingSummary.usage.teamMembers} / {billingSummary.quotas.teamMembers}
-                                        </p>
-                                    </div>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-soft">
-                                Billing information is currently unavailable.
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
-                    <CardHeader>
-                        <CardTitle>Upgrade path</CardTitle>
-                        <CardDescription>
-                            Move to a larger plan when you need more collaboration or advanced exam controls.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {billingSummary?.subscription.plan_tier === "free" && (
-                            <Button
-                                type="button"
-                                className="w-full"
-                                onClick={() => handleUpgrade("plus")}
-                                disabled={billingActionLoading !== ""}
-                            >
-                                {billingActionLoading === "plus" && (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                )}
-                                Upgrade to Plus
-                            </Button>
-                        )}
-                        {billingSummary?.subscription.plan_tier !== "pro" && (
-                            <Button
-                                type="button"
-                                variant={billingSummary?.subscription.plan_tier === "plus" ? "default" : "outline"}
-                                className="w-full"
-                                onClick={() => handleUpgrade("pro")}
-                                disabled={billingActionLoading !== ""}
-                            >
-                                {billingActionLoading === "pro" && (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                )}
-                                Upgrade to Pro
-                            </Button>
-                        )}
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            className="w-full"
-                            onClick={handleManageBilling}
-                            disabled={billingActionLoading !== ""}
-                        >
-                            {billingActionLoading === "portal" && (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            )}
-                            Manage Billing
-                        </Button>
-                    </CardContent>
-                </Card>
+                {
+                    //<Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    //    <CardHeader>
+                    //        <Badge className="w-fit rounded-full border-primary/20 bg-primary/8 text-primary hover:bg-primary/8">
+                    //            Billing
+                    //        </Badge>
+                    //        <CardTitle>Plan and usage</CardTitle>
+                    //        <CardDescription>
+                    //            Track your current plan, usage limits, and upgrade
+                    //            path.
+                    //        </CardDescription>
+                    //    </CardHeader>
+                    //    <CardContent className="space-y-4">
+                    //        {
+                    //            //    loadingBilling ? (
+                    //            //    <div className="flex items-center justify-center py-10">
+                    //            //        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    //            //    </div>
+                    //            //) : billingSummary ? (
+                    //            //    <>
+                    //            //        <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                    //            //            <div className="flex items-center justify-between gap-3">
+                    //            //                <div>
+                    //            //                    <p className="text-sm font-medium text-foreground">
+                    //            //                        {billingSummary.plan.label}
+                    //            //                    </p>
+                    //            //                    <p className="mt-1 text-sm text-soft">
+                    //            //                        {billingSummary.plan.monthlyPriceLabel} · {billingSummary.subscription.status}
+                    //            //                    </p>
+                    //            //                </div>
+                    //            //                <Badge variant="outline" className="uppercase">
+                    //            //                    {billingSummary.subscription.plan_tier}
+                    //            //                </Badge>
+                    //            //            </div>
+                    //            //            {billingSummary.subscription.current_period_end && (
+                    //            //                <p className="mt-3 text-sm text-soft">
+                    //            //                    Current period ends on{" "}
+                    //            //                    {new Date(
+                    //            //                        billingSummary.subscription.current_period_end,
+                    //            //                    ).toLocaleDateString()}
+                    //            //                </p>
+                    //            //            )}
+                    //            //        </div>
+                    //            //        <div className="grid gap-3 md:grid-cols-2">
+                    //            //            <div className="rounded-xl border border-border/70 p-4">
+                    //            //                <p className="text-sm text-soft">Groups</p>
+                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
+                    //            //                    {billingSummary.usage.groups} / {billingSummary.quotas.groups}
+                    //            //                </p>
+                    //            //            </div>
+                    //            //            <div className="rounded-xl border border-border/70 p-4">
+                    //            //                <p className="text-sm text-soft">Students</p>
+                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
+                    //            //                    {billingSummary.usage.students} / {billingSummary.quotas.students}
+                    //            //                </p>
+                    //            //            </div>
+                    //            //            <div className="rounded-xl border border-border/70 p-4">
+                    //            //                <p className="text-sm text-soft">Sessions this month</p>
+                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
+                    //            //                    {billingSummary.usage.sessionsThisMonth} / {billingSummary.quotas.sessionsPerMonth}
+                    //            //                </p>
+                    //            //            </div>
+                    //            //            <div className="rounded-xl border border-border/70 p-4">
+                    //            //                <p className="text-sm text-soft">Team members</p>
+                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
+                    //            //                    {billingSummary.usage.teamMembers} / {billingSummary.quotas.teamMembers}
+                    //            //                </p>
+                    //            //            </div>
+                    //            //        </div>
+                    //            //    </>
+                    //            //) : (
+                    //            //    <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-soft">
+                    //            //        Billing information is currently unavailable.
+                    //            //    </div>
+                    //            //    )
+                    //        }
+                    //    </CardContent>
+                    //</Card>
+                }
+                {
+                    //<Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
+                    //    <CardHeader>
+                    //        <CardTitle>Upgrade path</CardTitle>
+                    //        <CardDescription>
+                    //            Move to a larger plan when you need more
+                    //            collaboration or advanced exam controls.
+                    //        </CardDescription>
+                    //    </CardHeader>
+                    //    <CardContent className="space-y-3">
+                    //        {
+                    //            //billingSummary?.subscription.plan_tier === "free" && (
+                    //            //<Button
+                    //            //    type="button"
+                    //            //    className="w-full"
+                    //            //    onClick={() => handleUpgrade("plus")}
+                    //            //    disabled={billingActionLoading !== ""}
+                    //            //>
+                    //            //    {billingActionLoading === "plus" && (
+                    //            //        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    //            //    )}
+                    //            //    Upgrade to Plus
+                    //            //</Button>
+                    //            //)
+                    //        }
+                    //        {
+                    //            //billingSummary?.subscription.plan_tier !== "pro" && (
+                    //            //<Button
+                    //            //    type="button"
+                    //            //    variant={
+                    //            //        billingSummary?.subscription.plan_tier ===
+                    //            //        "plus"
+                    //            //            ? "default"
+                    //            //            : "outline"
+                    //            //    }
+                    //            //    className="w-full"
+                    //            //    onClick={() => handleUpgrade("pro")}
+                    //            //    disabled={billingActionLoading !== ""}
+                    //            //>
+                    //            //    {billingActionLoading === "pro" && (
+                    //            //        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    //            //    )}
+                    //            //    Upgrade to Pro
+                    //            //</Button>
+                    //            //)
+                    //        }
+                    //        {
+                    //            //    <Button
+                    //            //    type="button"
+                    //            //    variant="ghost"
+                    //            //    className="w-full"
+                    //            //    onClick={handleManageBilling}
+                    //            //    disabled={billingActionLoading !== ""}
+                    //            //>
+                    //            //    {billingActionLoading === "portal" && (
+                    //            //        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    //            //    )}
+                    //            //    Manage Billing
+                    //            //</Button>
+                    //        }
+                    //    </CardContent>
+                    //</Card>
+                }
             </section>
 
             <div className="mb-2 flex items-start justify-between gap-4">
@@ -653,7 +693,8 @@ export default function SettingsPage() {
                         Group grading policies
                     </h2>
                     <p className="mt-1 text-soft">
-                        Each group keeps its own attendance grading rules and late cutoff.
+                        Each group keeps its own attendance grading rules and
+                        late cutoff.
                     </p>
                 </div>
             </div>
@@ -711,21 +752,23 @@ export default function SettingsPage() {
                                                     <Badge
                                                         variant="outline"
                                                         className={
-                                                            groupRoles[group.id] ===
-                                                            "owner"
+                                                            groupRoles[
+                                                                group.id
+                                                            ] === "owner"
                                                                 ? "border-emerald-200 text-emerald-700"
                                                                 : "border-amber-200 text-amber-700"
                                                         }
                                                     >
-                                                        {groupRoles[group.id] ===
-                                                        "owner"
+                                                        {groupRoles[
+                                                            group.id
+                                                        ] === "owner"
                                                             ? "Owner"
                                                             : "TA"}
                                                     </Badge>
                                                 </div>
                                                 <p className="mt-1 text-sm text-gray-500">
-                                                    Edit the grade value for each
-                                                    attendance result.
+                                                    Edit the grade value for
+                                                    each attendance result.
                                                 </p>
                                             </div>
                                             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
@@ -755,7 +798,9 @@ export default function SettingsPage() {
                                                         id={`present-${group.id}`}
                                                         type="number"
                                                         step="0.01"
-                                                        value={form.present_grade}
+                                                        value={
+                                                            form.present_grade
+                                                        }
                                                         onChange={(e) =>
                                                             handleGroupSettingChange(
                                                                 group.id,
@@ -807,7 +852,9 @@ export default function SettingsPage() {
                                                         id={`excused-${group.id}`}
                                                         type="number"
                                                         step="0.01"
-                                                        value={form.excused_grade}
+                                                        value={
+                                                            form.excused_grade
+                                                        }
                                                         onChange={(e) =>
                                                             handleGroupSettingChange(
                                                                 group.id,
@@ -834,7 +881,9 @@ export default function SettingsPage() {
                                                         id={`absent-${group.id}`}
                                                         type="number"
                                                         step="0.01"
-                                                        value={form.absent_grade}
+                                                        value={
+                                                            form.absent_grade
+                                                        }
                                                         onChange={(e) =>
                                                             handleGroupSettingChange(
                                                                 group.id,
@@ -845,8 +894,8 @@ export default function SettingsPage() {
                                                     />
                                                     <p className="text-sm text-gray-500">
                                                         Grade applied when the
-                                                        student has no attendance
-                                                        record.
+                                                        student has no
+                                                        attendance record.
                                                     </p>
                                                 </div>
 
@@ -864,7 +913,9 @@ export default function SettingsPage() {
                                                         min="0"
                                                         step="1"
                                                         placeholder="Leave blank to disable"
-                                                        value={form.late_after_minutes}
+                                                        value={
+                                                            form.late_after_minutes
+                                                        }
                                                         onChange={(e) =>
                                                             handleGroupSettingChange(
                                                                 group.id,
@@ -920,7 +971,6 @@ export default function SettingsPage() {
                         )}
                     </CardContent>
                 </Card>
-
             </div>
         </div>
     );

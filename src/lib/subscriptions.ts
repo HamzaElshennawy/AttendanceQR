@@ -236,31 +236,39 @@ export async function getCurrentEntitlements(
     userId: string,
 ): Promise<CurrentEntitlements> {
     const subscription = await getOrCreateSubscriptionRecord(userId);
-    const planTier = normalizePlanTier(subscription.plan_tier);
+    // TIERING DISABLED: All users get Pro entitlements regardless of subscription.
+    // const planTier = normalizePlanTier(subscription.plan_tier);
     const usage = await getUsageSnapshot(userId);
-    const plan = PLAN_DEFINITIONS[planTier];
+    // const plan = PLAN_DEFINITIONS[planTier];
 
-    const now = Date.now();
-    const isDisabled =
-        subscription.is_disabled ||
-        (subscription.grace_until
-            ? new Date(subscription.grace_until).getTime() < now
-            : false);
+    // const now = Date.now();
+    // const isDisabled =
+    //     subscription.is_disabled ||
+    //     (subscription.grace_until
+    //         ? new Date(subscription.grace_until).getTime() < now
+    //         : false);
 
-    const effectivePlan =
-        isDisabled || !ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status)
-            ? PLAN_DEFINITIONS.free
-            : plan;
+    // const effectivePlan =
+    //     isDisabled || !ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status)
+    //         ? PLAN_DEFINITIONS.free
+    //         : plan;
+
+    // TIERING DISABLED: Force Pro plan for all users
+    //const effectivePlan = PLAN_DEFINITIONS.pro;
 
     return {
         subscription: {
             ...subscription,
-            plan_tier: effectivePlan.tier,
+            //plan_tier: effectivePlan.tier,
+            plan_tier: PLAN_DEFINITIONS.pro.tier,
         },
-        plan: effectivePlan,
+        //plan: effectivePlan,
+        plan: PLAN_DEFINITIONS.pro,
         usage,
-        features: effectivePlan.features,
-        quotas: effectivePlan.quotas,
+        //features: effectivePlan.features,
+        features: PLAN_DEFINITIONS.pro.features,
+        //quotas: effectivePlan.quotas,
+        quotas: PLAN_DEFINITIONS.pro.quotas,
     };
 }
 

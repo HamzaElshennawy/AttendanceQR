@@ -88,6 +88,7 @@ export async function POST(
         universityId: String(body.university_id).trim(),
         accessCode: body.access_code ? String(body.access_code).trim() : null,
         fingerprint: body.fingerprint ? String(body.fingerprint) : null,
+        deviceId: body.device_id ? String(body.device_id) : null,
     });
 
     if (!result.ok) {

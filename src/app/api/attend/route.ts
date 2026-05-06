@@ -38,6 +38,7 @@ export async function POST(request: Request) {
         latitude,
         longitude,
         fingerprint,
+        device_id,
     } = body;
 
     if (!session_id || !university_id || !token) {
@@ -157,36 +158,37 @@ export async function POST(request: Request) {
         }
     }
 
-    // 5. Device fingerprint check
-    if (fingerprint) {
-        const { data: existingDevice } = await supabaseAdmin
+    // 5. Device duplicate check — layered: device_id = hard block, fingerprint = soft warning
+    // 5a. Hard check: persistent device UUID (stored in browser localStorage + IndexedDB)
+    if (device_id) {
+        const { data: existingDeviceId } = await supabaseAdmin
             .from("attendance_records")
             .select("id, university_id")
             .eq("session_id", session_id)
-            .eq("device_fingerprint", fingerprint)
+            .eq("device_id", device_id)
             .single();
 
-        if (existingDevice && existingDevice.university_id !== university_id) {
-            // Look up the original student's name
+        if (existingDeviceId && existingDeviceId.university_id !== university_id) {
             const { data: originalStudent } = await supabaseAdmin
                 .from("students")
                 .select("name")
                 .eq("group_id", session.group_id)
-                .eq("university_id", existingDevice.university_id)
+                .eq("university_id", existingDeviceId.university_id)
                 .single();
 
-            // Same device, different student — log violation
+            // Hard violation — same persistent device UUID, different student
             await supabaseAdmin.from("violations").insert({
                 session_id,
                 university_id,
                 student_name: student.name,
                 type: "duplicate_device",
                 details: {
-                    fingerprint,
-                    original_student_id: existingDevice.university_id,
+                    device_id,
+                    original_student_id: existingDeviceId.university_id,
                     original_student_name: originalStudent?.name || "Unknown",
                     attempted_student_id: university_id,
                     attempted_student_name: student.name,
+                    severity: "hard",
                 },
             });
 
@@ -196,6 +198,43 @@ export async function POST(request: Request) {
                 },
                 { status: 400 },
             );
+        }
+    }
+
+    // 5b. Soft check: FingerprintJS visitorId (hardware-derived, may collide on identical devices)
+    let softViolationLogged = false;
+    if (fingerprint) {
+        const { data: existingFingerprint } = await supabaseAdmin
+            .from("attendance_records")
+            .select("id, university_id")
+            .eq("session_id", session_id)
+            .eq("device_fingerprint", fingerprint)
+            .single();
+
+        if (existingFingerprint && existingFingerprint.university_id !== university_id) {
+            const { data: originalStudent } = await supabaseAdmin
+                .from("students")
+                .select("name")
+                .eq("group_id", session.group_id)
+                .eq("university_id", existingFingerprint.university_id)
+                .single();
+
+            // Soft violation — log for professor review but allow check-in
+            await supabaseAdmin.from("violations").insert({
+                session_id,
+                university_id,
+                student_name: student.name,
+                type: "duplicate_device_soft",
+                details: {
+                    fingerprint,
+                    original_student_id: existingFingerprint.university_id,
+                    original_student_name: originalStudent?.name || "Unknown",
+                    attempted_student_id: university_id,
+                    attempted_student_name: student.name,
+                    severity: "soft",
+                },
+            });
+            softViolationLogged = true;
         }
     }
 
@@ -235,7 +274,7 @@ export async function POST(request: Request) {
         ? "late"
         : "present";
 
-    // 7. Record attendance
+    // 7. Record attendance (store both device_id and fingerprint)
     const { error: insertError } = await supabaseAdmin
         .from("attendance_records")
         .insert({
@@ -244,6 +283,7 @@ export async function POST(request: Request) {
             university_id,
             status: attendanceStatus,
             device_fingerprint: fingerprint || null,
+            device_id: device_id || null,
         });
 
     if (insertError) {
@@ -253,13 +293,16 @@ export async function POST(request: Request) {
         );
     }
 
+    const responseMessage = attendanceStatus === "late"
+        ? "Attendance recorded as late."
+        : "Attendance recorded successfully!";
+
     return NextResponse.json({
         success: true,
         student_name: student.name,
-        message:
-            attendanceStatus === "late"
-                ? "Attendance recorded as late."
-                : "Attendance recorded successfully!",
+        message: softViolationLogged
+            ? responseMessage + " (Note: A device similarity was flagged for review.)"
+            : responseMessage,
         status: attendanceStatus,
     });
 }

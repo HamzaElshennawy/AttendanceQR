@@ -464,6 +464,7 @@ export default async function LandingPage() {
                         </div>
                     </div>
                 </section>
+                {/* PRICING SECTION COMMENTED OUT — pricing is coming soon
                 <section className="border-y border-border/70 bg-card/55 py-18">
                     <div className="mx-auto max-w-7xl px-6">
                         <div className="flex flex-wrap items-end justify-between gap-5">
@@ -521,6 +522,27 @@ export default async function LandingPage() {
                                     </p>
                                 </article>
                             ))}
+                        </div>
+                    </div>
+                </section>
+                */}
+
+                {/* Pricing coming soon notice */}
+                <section className="border-y border-border/70 bg-card/55 py-18">
+                    <div className="mx-auto max-w-7xl px-6">
+                        <div className="flex flex-col items-center justify-center text-center">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/6 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
+                                <Sparkles className="h-3.5 w-3.5" />
+                                Coming soon
+                            </div>
+                            <h2 className="mt-6 font-display text-4xl text-foreground">
+                                Pricing is coming soon.
+                            </h2>
+                            <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">
+                                We are preparing flexible packages for instructors,
+                                teams, and departments. In the meantime, all features
+                                are available at no cost.
+                            </p>
                         </div>
                     </div>
                 </section>

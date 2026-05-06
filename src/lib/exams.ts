@@ -79,6 +79,7 @@ export interface AssessmentAttempt {
     question_order: string[];
     choice_order: Record<string, string[]>;
     device_fingerprint: string | null;
+    device_id: string | null;
     score: number | null;
     max_score: number;
     auto_graded_score: number | null;
