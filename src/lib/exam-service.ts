@@ -140,6 +140,7 @@ export async function startExamAttempt(args: {
     universityId: string;
     accessCode?: string | null;
     fingerprint?: string | null;
+    deviceId?: string | null;
 }) {
     const exam = await getAssessmentWithExamConfig(args.assessmentId);
     if (!exam) {
@@ -183,17 +184,19 @@ export async function startExamAttempt(args: {
     const attempts = (existingAttempts || []) as AssessmentAttempt[];
     const latestInProgress = attempts.find((attempt) => attempt.status === "in_progress");
     if (latestInProgress) {
+        // Hard check: persistent device UUID
         if (
-            latestInProgress.device_fingerprint &&
-            args.fingerprint &&
-            latestInProgress.device_fingerprint !== args.fingerprint
+            latestInProgress.device_id &&
+            args.deviceId &&
+            latestInProgress.device_id !== args.deviceId
         ) {
             await supabaseAdmin.from("attempt_events").insert({
                 attempt_id: latestInProgress.id,
                 event_type: "duplicate_session_detected",
                 payload: {
-                    previous_fingerprint: latestInProgress.device_fingerprint,
-                    attempted_fingerprint: args.fingerprint,
+                    previous_device_id: latestInProgress.device_id,
+                    attempted_device_id: args.deviceId,
+                    severity: "hard",
                 },
             });
             return {
@@ -201,6 +204,26 @@ export async function startExamAttempt(args: {
                 status: 409,
                 error: "This exam is already active on another device.",
             } as const;
+        }
+
+        // Soft check: FingerprintJS visitorId (may collide on identical hardware)
+        if (
+            latestInProgress.device_fingerprint &&
+            args.fingerprint &&
+            latestInProgress.device_fingerprint !== args.fingerprint &&
+            // Only flag if device_id didn't already match (avoid double-flagging)
+            !(latestInProgress.device_id && args.deviceId && latestInProgress.device_id === args.deviceId)
+        ) {
+            await supabaseAdmin.from("attempt_events").insert({
+                attempt_id: latestInProgress.id,
+                event_type: "duplicate_session_detected",
+                payload: {
+                    previous_fingerprint: latestInProgress.device_fingerprint,
+                    attempted_fingerprint: args.fingerprint,
+                    severity: "soft",
+                },
+            });
+            // Soft: log but don't block — allow reconnect
         }
 
         return { ok: true, attempt: latestInProgress, reused: true } as const;
@@ -243,6 +266,7 @@ export async function startExamAttempt(args: {
             question_order: ordering.questionOrder,
             choice_order: ordering.choiceOrder,
             device_fingerprint: args.fingerprint || null,
+            device_id: args.deviceId || null,
             max_score: maxScore,
         })
         .select("*")
@@ -255,7 +279,7 @@ export async function startExamAttempt(args: {
     await supabaseAdmin.from("attempt_events").insert({
         attempt_id: created.id,
         event_type: "started",
-        payload: { fingerprint: args.fingerprint || null },
+        payload: { fingerprint: args.fingerprint || null, device_id: args.deviceId || null },
     });
 
     return { ok: true, attempt: created as AssessmentAttempt, reused: false } as const;

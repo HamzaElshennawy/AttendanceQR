@@ -7,6 +7,21 @@ export interface ReleaseNote {
 }
 
 export const releaseNotes: ReleaseNote[] = [
+
+    {
+        version: "v0.8.2",
+        date: "May 6, 2026",
+        tag: "Latest",
+        title: "Layered Device Fingerprinting for Attendance Integrity",
+        notes: [
+            "Device duplicate detection now uses two layers: a persistent device UUID stored in the browser for hard blocks, and a hardware-derived FingerprintJS signal for soft warnings.",
+            "Hard violations (same UUID, different student) block check-in and are highlighted in red on the session dashboard and Excel export with the matched UUID shown.",
+            "Soft violations (same fingerprint, different student) allow check-in but flag a warning in amber for professor review with the matched fingerprint shown.",
+            "The violations tab now distinguishes between 'Duplicate Device' (hard, red) and 'Similar Device' (soft, amber) badges with full identifier details.",
+            "Excel attendance exports now use red highlighting for confirmed duplicate devices and yellow highlighting for possible device similarity, with the relevant identifier included in the status column.",
+            "Exam device-lock detection was also upgraded to the same layered approach, with hard blocks on UUID mismatch and soft logging on fingerprint mismatch.",
+        ],
+    },
     {
         version: "v0.8.1",
         date: "April 29, 2026",

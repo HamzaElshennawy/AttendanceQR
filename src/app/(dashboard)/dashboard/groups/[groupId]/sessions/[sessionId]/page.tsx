@@ -340,7 +340,7 @@ export default function SessionDetailPage() {
             const studentViolations = violations.filter(
                 (v) =>
                     v.university_id === student.university_id ||
-                    (v.type === "duplicate_device" &&
+                    ((v.type === "duplicate_device" || v.type === "duplicate_device_soft") &&
                         v.details.original_student_id ===
                             student.university_id),
             );
@@ -349,23 +349,39 @@ export default function SessionDetailPage() {
                 const outOfRange = studentViolations.find(
                     (v) => v.type === "out_of_range",
                 );
-                const attemptedDuplicate = studentViolations.find(
+                const attemptedHardDuplicate = studentViolations.find(
                     (v) =>
                         v.type === "duplicate_device" &&
                         v.university_id === student.university_id,
                 );
-                const originalDuplicate = studentViolations.find(
+                const originalHardDuplicate = studentViolations.find(
                     (v) =>
                         v.type === "duplicate_device" &&
                         v.details.original_student_id === student.university_id,
                 );
+                const attemptedSoftDuplicate = studentViolations.find(
+                    (v) =>
+                        v.type === "duplicate_device_soft" &&
+                        v.university_id === student.university_id,
+                );
+                const originalSoftDuplicate = studentViolations.find(
+                    (v) =>
+                        v.type === "duplicate_device_soft" &&
+                        v.details.original_student_id === student.university_id,
+                );
 
-                if (attemptedDuplicate) {
-                    statusText = `Used device of: ${attemptedDuplicate.details.original_student_name} (${attemptedDuplicate.details.original_student_id})`;
-                    rowColor = "FFFFCCCC"; // Light Red
-                } else if (originalDuplicate) {
-                    statusText = `Device shared with: ${originalDuplicate.student_name} (${originalDuplicate.university_id})`;
-                    rowColor = "FFFFEDCC"; // Light Orange/Yellow
+                if (attemptedHardDuplicate) {
+                    statusText = `⛔ Same device UUID as: ${attemptedHardDuplicate.details.original_student_name} (${attemptedHardDuplicate.details.original_student_id}) — UUID: ${attemptedHardDuplicate.details.device_id}`;
+                    rowColor = "FFFFCCCC"; // Light Red — hard block
+                } else if (originalHardDuplicate) {
+                    statusText = `⛔ Device UUID shared with: ${originalHardDuplicate.student_name} (${originalHardDuplicate.university_id}) — UUID: ${originalHardDuplicate.details.device_id}`;
+                    rowColor = "FFFFCCCC"; // Light Red — hard block
+                } else if (attemptedSoftDuplicate) {
+                    statusText = `⚠️ Same device fingerprint as: ${attemptedSoftDuplicate.details.original_student_name} (${attemptedSoftDuplicate.details.original_student_id}) — Fingerprint: ${attemptedSoftDuplicate.details.fingerprint}`;
+                    rowColor = "FFFFFFCC"; // Light Yellow — soft warning
+                } else if (originalSoftDuplicate) {
+                    statusText = `⚠️ Same device fingerprint as: ${originalSoftDuplicate.student_name} (${originalSoftDuplicate.university_id}) — Fingerprint: ${originalSoftDuplicate.details.fingerprint}`;
+                    rowColor = "FFFFFFCC"; // Light Yellow — soft warning
                 } else if (outOfRange) {
                     statusText = `Out of range (${outOfRange.details.distance_meters}m)`;
                     rowColor = "FFFFCCCC"; // Light Red
@@ -727,10 +743,15 @@ export default function SessionDetailPage() {
                                                         <MapPin className="h-3 w-3 mr-1" />
                                                         Out of Range
                                                     </Badge>
-                                                ) : (
+                                                ) : v.type === "duplicate_device" ? (
                                                     <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
                                                         <Smartphone className="h-3 w-3 mr-1" />
                                                         Duplicate Device
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+                                                        <Smartphone className="h-3 w-3 mr-1" />
+                                                        Similar Device
                                                     </Badge>
                                                 )}
                                             </TableCell>
@@ -740,10 +761,12 @@ export default function SessionDetailPage() {
                                             <TableCell>
                                                 {v.university_id}
                                             </TableCell>
-                                            <TableCell className="text-sm text-gray-500 max-w-[200px] truncate">
+                                            <TableCell className="text-sm text-gray-500 max-w-[350px]">
                                                 {v.type === "out_of_range"
                                                     ? `${v.details.distance_meters as number}m away (limit: ${v.details.radius_meters as number}m)`
-                                                    : `Device already used by ${(v.details.original_student_name as string) || "Unknown"} (${v.details.original_student_id as string})`}
+                                                    : v.type === "duplicate_device"
+                                                      ? `⛔ Blocked — same device UUID as ${(v.details.original_student_name as string) || "Unknown"} (${v.details.original_student_id as string}). UUID: ${v.details.device_id as string}`
+                                                      : `⚠️ Allowed — same device fingerprint as ${(v.details.original_student_name as string) || "Unknown"} (${v.details.original_student_id as string}). Fingerprint: ${v.details.fingerprint as string}`}
                                             </TableCell>
                                             <TableCell className="text-sm text-muted-foreground">
                                                 {new Date(
