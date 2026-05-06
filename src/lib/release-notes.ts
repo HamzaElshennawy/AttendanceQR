@@ -7,7 +7,6 @@ export interface ReleaseNote {
 }
 
 export const releaseNotes: ReleaseNote[] = [
-
     {
         version: "v0.8.2",
         date: "May 6, 2026",
@@ -35,7 +34,7 @@ export const releaseNotes: ReleaseNote[] = [
     {
         version: "v0.8.0",
         date: "April 1, 2026",
-        tag: "Latest",
+        tag: "Fixes",
         title: "Quorum Academic UX And Product Surface Redesign",
         notes: [
             "The dashboard shell, sidebar, search, and shared UI primitives were redesigned around the Quorum Academic system for a calmer and more consistent workspace.",
