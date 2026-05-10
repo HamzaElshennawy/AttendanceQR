@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { QuorumIcon } from "@/components/QuorumLogo";
 import { DashboardSearch } from "@/components/DashboardSearch";
+import { FeedbackPrompt } from "@/components/FeedbackPrompt";
 
 export default function DashboardLayout({
     children,
@@ -250,12 +251,14 @@ export default function DashboardLayout({
                                 <Menu className="h-5 w-5" />
                             </Button>
                         </SheetTrigger>
-                        <SheetContent
-                            side="left"
-                            className="w-72 border-r-0 bg-sidebar p-0 text-sidebar-foreground"
-                        >
-                            {renderNavContent()}
-                        </SheetContent>
+                        {sidebarOpen ? (
+                            <SheetContent
+                                side="left"
+                                className="w-72 border-r-0 bg-sidebar p-0 text-sidebar-foreground"
+                            >
+                                {renderNavContent()}
+                            </SheetContent>
+                        ) : null}
                     </Sheet>
                     <Link href="/dashboard" className="flex items-center gap-3">
                         <div className="rounded-lg border border-border/70 bg-card p-1.5 text-foreground">
@@ -280,7 +283,7 @@ export default function DashboardLayout({
                             </h1>
                         </div>
                         <div className="flex items-center gap-3">
-                            <DashboardSearch />
+                            <DashboardSearch enableShortcut />
                             <Button
                                 variant="outline"
                                 size="icon"
@@ -301,6 +304,7 @@ export default function DashboardLayout({
                     {children}
                 </div>
             </main>
+            <FeedbackPrompt />
         </div>
     );
 }

@@ -34,8 +34,9 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
             <body
+                suppressHydrationWarning
                 className={`${publicSans.variable} ${ibmPlexMono.variable} ${newsreader.variable} font-sans antialiased`}
             >
                 <AppProviders>{children}</AppProviders>
