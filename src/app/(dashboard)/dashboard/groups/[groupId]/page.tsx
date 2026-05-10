@@ -66,6 +66,7 @@ import {
 import { CourseworkGroupPanel } from "@/components/CourseworkGroupPanel";
 import { readSpreadsheetFile } from "@/lib/spreadsheet";
 import { useAppDialog } from "@/components/AppDialogProvider";
+import { GroupOnboardingTutorial } from "@/components/GroupOnboardingTutorial";
 
 interface Group {
     id: string;
@@ -179,6 +180,9 @@ export default function GroupDetailPage() {
     const [group, setGroup] = useState<Group | null>(null);
     const [students, setStudents] = useState<Student[]>([]);
     const [sessions, setSessions] = useState<Session[]>([]);
+    const [activeTab, setActiveTab] = useState<
+        "sessions" | "coursework" | "students" | "team"
+    >("sessions");
     const [loading, setLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState("");
     const [team, setTeam] = useState<TeamMember[]>([]);
@@ -1208,20 +1212,27 @@ export default function GroupDetailPage() {
         <div className="space-y-6">
             <nav
                 aria-label="Breadcrumb"
-                className="flex flex-wrap items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                className="flex flex-wrap items-center justify-between gap-3"
             >
-                <button
-                    type="button"
-                    onClick={() => router.push("/dashboard")}
-                    className="transition-colors hover:text-primary"
-                >
-                    Dashboard
-                </button>
-                <ChevronRight className="h-3.5 w-3.5 opacity-50" />
-                <span className="text-foreground">{group.name}</span>
+                <div className="flex flex-wrap items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    <button
+                        type="button"
+                        onClick={() => router.push("/dashboard")}
+                        className="transition-colors hover:text-primary"
+                    >
+                        Dashboard
+                    </button>
+                    <ChevronRight className="h-3.5 w-3.5 opacity-50" />
+                    <span className="text-foreground">{group.name}</span>
+                </div>
+                <GroupOnboardingTutorial
+                    groupId={groupId}
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                />
             </nav>
 
-            <section className="space-y-5">
+            <section className="space-y-5" data-onboarding="group-overview">
                 <div className="flex items-start gap-3">
                     <Button
                         variant="outline"
@@ -1383,10 +1394,16 @@ export default function GroupDetailPage() {
             </Dialog>
 
             <Tabs
-                defaultValue="sessions"
+                value={activeTab}
+                onValueChange={(value) =>
+                    setActiveTab(
+                        value as "sessions" | "coursework" | "students" | "team",
+                    )
+                }
                 className="space-y-6"
             >
                 <TabsList
+                    data-onboarding="group-tabs"
                     className="w-full justify-start rounded-2xl border border-border/70 bg-background/80 p-1"
                 >
                     <TabsTrigger value="sessions">
@@ -1418,7 +1435,10 @@ export default function GroupDetailPage() {
                                 or review previous sessions.
                             </p>
                         </div>
-                        <div className="flex justify-end gap-2">
+                        <div
+                            className="flex justify-end gap-2"
+                            data-onboarding="sessions-actions"
+                        >
                         <Dialog
                             open={attendanceImportOpen}
                             onOpenChange={(open) => {
@@ -2203,7 +2223,10 @@ export default function GroupDetailPage() {
                     </div>
 
                     {sessions.length === 0 ? (
-                        <Card className="border-dashed border-primary/20 bg-gradient-to-br from-background via-background to-primary/6">
+                        <Card
+                            className="border-dashed border-primary/20 bg-gradient-to-br from-background via-background to-primary/6"
+                            data-onboarding="sessions-history"
+                        >
                             <CardContent className="flex flex-col items-center justify-center py-12">
                                 <Clock className="mb-4 h-12 w-12 text-primary/45" />
                                 <p className="text-sm text-soft">
@@ -2213,7 +2236,10 @@ export default function GroupDetailPage() {
                             </CardContent>
                         </Card>
                     ) : (
-                        <div className="space-y-3">
+                        <div
+                            className="space-y-3"
+                            data-onboarding="sessions-history"
+                        >
                             {sessions.map((session) => (
                                 <Card
                                     key={session.id}
@@ -2324,15 +2350,14 @@ export default function GroupDetailPage() {
                 </TabsContent>
 
                 {/* Students Tab */}
-                <TabsContent
-                    value="coursework"
-                    className="space-y-5"
-                >
-                    <CourseworkGroupPanel
-                        groupId={groupId}
-                        students={students}
-                        sessions={sessions}
-                    />
+                <TabsContent value="coursework" className="space-y-5">
+                    <div data-onboarding="coursework-panel">
+                        <CourseworkGroupPanel
+                            groupId={groupId}
+                            students={students}
+                            sessions={sessions}
+                        />
+                    </div>
                 </TabsContent>
 
                 <TabsContent
@@ -2381,7 +2406,10 @@ export default function GroupDetailPage() {
                                         placeholder="Search students by name or ID"
                                     />
                                 </div>
-                                <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                                <div
+                                    className="flex flex-wrap justify-start gap-2 lg:justify-end"
+                                    data-onboarding="students-actions"
+                                >
                         {/* CSV Upload */}
                         <Dialog
                             open={csvOpen}

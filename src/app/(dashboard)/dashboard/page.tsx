@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAppDialog } from "@/components/AppDialogProvider";
+import { OnboardingTutorial } from "@/components/OnboardingTutorial";
 
 interface Group {
     id: string;
@@ -44,12 +45,16 @@ interface Group {
     session_count: number;
 }
 
+const GROUP_TOUR_REQUEST_KEY = "quorum-onboarding-group-tour-requested";
+const GROUP_TOUR_STATE_KEY = "quorum-group-workspace-tour";
+
 export default function DashboardPage() {
     const [groups, setGroups] = useState<Group[]>([]);
     const [loading, setLoading] = useState(true);
     const [createOpen, setCreateOpen] = useState(false);
     const [newGroupName, setNewGroupName] = useState("");
     const [creating, setCreating] = useState(false);
+    const [continueToGroupTour, setContinueToGroupTour] = useState(false);
     const router = useRouter();
     const { showAlert, showConfirm } = useAppDialog();
 
@@ -91,6 +96,31 @@ export default function DashboardPage() {
         if (response.ok) {
             setNewGroupName("");
             setCreateOpen(false);
+            const createdGroup = data.group as { id: string } | undefined;
+
+            try {
+                const shouldContinueTour =
+                    continueToGroupTour ||
+                    window.localStorage.getItem(GROUP_TOUR_REQUEST_KEY) === "true";
+
+                if (shouldContinueTour && createdGroup?.id) {
+                    setContinueToGroupTour(false);
+                    window.localStorage.removeItem(GROUP_TOUR_REQUEST_KEY);
+                    window.localStorage.setItem(
+                        GROUP_TOUR_STATE_KEY,
+                        JSON.stringify({
+                            groupId: createdGroup.id,
+                            step: 0,
+                        }),
+                    );
+                    router.replace(`/dashboard/groups/${createdGroup.id}`);
+                    return;
+                }
+            } catch {
+                // Ignore storage failures and continue with the default flow.
+            }
+
+            setContinueToGroupTour(false);
             fetchGroups();
         } else {
             await showAlert({
@@ -203,15 +233,27 @@ export default function DashboardPage() {
         <div className="space-y-8">
             <nav
                 aria-label="Breadcrumb"
-                className="flex flex-wrap items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                className="flex flex-wrap items-center justify-between gap-3"
             >
-                <span>Dashboard</span>
-                <ChevronRight className="h-3.5 w-3.5 opacity-50" />
-                <span className="text-foreground">Groups</span>
+                <div className="flex flex-wrap items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    <span>Dashboard</span>
+                    <ChevronRight className="h-3.5 w-3.5 opacity-50" />
+                    <span className="text-foreground">Groups</span>
+                </div>
+                <div data-onboarding="tour-trigger">
+                    <OnboardingTutorial
+                        groupsCount={groups.length}
+                        onCreateGroup={() => setCreateOpen(true)}
+                        onRequestGroupTour={() => setContinueToGroupTour(true)}
+                    />
+                </div>
             </nav>
 
             <section className="grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,24rem)]">
-                <Card className="overflow-hidden">
+                <Card
+                    className="overflow-hidden"
+                    data-onboarding="dashboard-overview"
+                >
                     <CardHeader className="relative pb-4">
                         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0" />
                         <Badge variant="outline" className="w-fit border-primary/15 bg-primary/8 text-primary">
@@ -250,7 +292,10 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="surface-elevated">
+                <Card
+                    className="surface-elevated"
+                    data-onboarding="create-group-panel"
+                >
                     <CardHeader>
                         <Badge variant="warning" className="w-fit">
                             Quick action
@@ -273,7 +318,10 @@ export default function DashboardPage() {
                         </div>
                         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                             <DialogTrigger asChild>
-                                <Button className="w-full justify-center">
+                                <Button
+                                    className="w-full justify-center"
+                                    data-onboarding="create-group-trigger"
+                                >
                                     <Plus className="mr-2 h-4 w-4" />
                                     New Group
                                 </Button>
@@ -330,7 +378,10 @@ export default function DashboardPage() {
             </section>
 
             {groups.length === 0 ? (
-                <Card className="border-dashed border-primary/20 bg-gradient-to-br from-background via-background to-primary/6">
+                <Card
+                    className="border-dashed border-primary/20 bg-gradient-to-br from-background via-background to-primary/6"
+                    data-onboarding="groups-area"
+                >
                     <CardContent className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="mb-5 rounded-3xl bg-primary/10 p-5 text-primary">
                             <Users className="h-9 w-9" />
@@ -353,7 +404,7 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
             ) : (
-                <section className="space-y-4">
+                <section className="space-y-4" data-onboarding="groups-area">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                             <h2 className="text-2xl text-foreground">
