@@ -27,7 +27,11 @@ const resultTypeLabel: Record<SearchResultItem["type"], string> = {
     coursework: "Coursework",
 };
 
-export function DashboardSearch() {
+export function DashboardSearch({
+    enableShortcut = false,
+}: {
+    enableShortcut?: boolean;
+}) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
@@ -35,16 +39,25 @@ export function DashboardSearch() {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
+        if (!enableShortcut) {
+            return;
+        }
+
         const handleKeyDown = (event: KeyboardEvent) => {
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-                event.preventDefault();
-                setOpen(true);
-            }
+            const isShortcut =
+                (event.ctrlKey || event.metaKey) &&
+                (event.key.toLowerCase() === "k" || event.code === "KeyK");
+
+            if (!isShortcut) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(true);
         };
 
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, []);
+        document.addEventListener("keydown", handleKeyDown, true);
+        return () => document.removeEventListener("keydown", handleKeyDown, true);
+    }, [enableShortcut]);
 
     useEffect(() => {
         if (!open || query.trim().length < 2) {
