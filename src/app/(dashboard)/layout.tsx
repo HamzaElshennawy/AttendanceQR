@@ -283,7 +283,9 @@ export default function DashboardLayout({
                             </h1>
                         </div>
                         <div className="flex items-center gap-3">
-                            <DashboardSearch enableShortcut />
+                            <div data-onboarding="dashboard-search">
+                                <DashboardSearch enableShortcut />
+                            </div>
                             <Button
                                 variant="outline"
                                 size="icon"
@@ -297,7 +299,9 @@ export default function DashboardLayout({
                 </div>
                 <div className="border-b border-border/70 bg-background/72 px-4 py-3 lg:hidden">
                     <div className="mx-auto max-w-7xl">
-                        <DashboardSearch />
+                        <div data-onboarding="dashboard-search">
+                            <DashboardSearch />
+                        </div>
                     </div>
                 </div>
                 <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
