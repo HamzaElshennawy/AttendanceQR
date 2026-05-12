@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, Newsreader, Public_Sans } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/AppProviders";
+import { Analytics } from "@vercel/analytics/next";
 
 const appBaseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -93,11 +94,15 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en" suppressHydrationWarning>
+        <html
+            lang="en"
+            suppressHydrationWarning
+        >
             <body
                 suppressHydrationWarning
                 className={`${publicSans.variable} ${ibmPlexMono.variable} ${newsreader.variable} font-sans antialiased`}
             >
+                <Analytics />
                 <AppProviders>{children}</AppProviders>
             </body>
         </html>
