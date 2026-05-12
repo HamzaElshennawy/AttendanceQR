@@ -3,6 +3,13 @@ import { IBM_Plex_Mono, Newsreader, Public_Sans } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/AppProviders";
 
+const appBaseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "https://quorum.app";
+
+const metadataBase = new URL(appBaseUrl);
+
 const publicSans = Public_Sans({
     variable: "--font-public-sans",
     subsets: ["latin"],
@@ -23,9 +30,61 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-    title: "Quorum — Attendance, Coursework, and Exam Operations",
+    metadataBase,
+    title: {
+        default: "Quorum | QR Attendance and Grading for Teachers",
+        template: "%s | Quorum",
+    },
     description:
-        "Run QR attendance, coursework workflows, and exam operations in one academic workspace.",
+        "Quorum helps teachers track attendance with QR codes, record grades, and keep student progress organized in one simple workspace.",
+    applicationName: "Quorum",
+    keywords: [
+        "QR attendance",
+        "teacher attendance app",
+        "student attendance tracker",
+        "grading app for teachers",
+        "teacher dashboard",
+        "attendance and grades",
+        "education management",
+        "Quorum",
+    ],
+    alternates: {
+        canonical: "/",
+    },
+    openGraph: {
+        type: "website",
+        url: "/",
+        siteName: "Quorum",
+        title: "Quorum | QR Attendance and Grading for Teachers",
+        description:
+            "Track attendance, save grades, and manage your students in one clear teacher workspace.",
+        images: [
+            {
+                url: "/opengraph-image",
+                width: 1200,
+                height: 630,
+                alt: "Quorum teacher workspace preview",
+            },
+        ],
+    },
+    twitter: {
+        card: "summary_large_image",
+        title: "Quorum | QR Attendance and Grading for Teachers",
+        description:
+            "Track attendance, save grades, and manage your students in one clear teacher workspace.",
+        images: ["/opengraph-image"],
+    },
+    robots: {
+        index: true,
+        follow: true,
+        googleBot: {
+            index: true,
+            follow: true,
+            "max-image-preview": "large",
+            "max-snippet": -1,
+            "max-video-preview": -1,
+        },
+    },
 };
 
 export default function RootLayout({

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +17,23 @@ import {
     Users,
 } from "lucide-react";
 import { QuorumIcon } from "@/components/QuorumLogo";
+
+export const metadata: Metadata = {
+    title: "QR Attendance and Grading for Teachers",
+    description:
+        "Use Quorum to take attendance with QR codes, record grades, and keep each student's progress organized without extra admin work.",
+    openGraph: {
+        title: "QR Attendance and Grading for Teachers",
+        description:
+            "Take attendance, save grades, and manage students from one clear teacher dashboard.",
+        url: "/",
+    },
+    twitter: {
+        title: "QR Attendance and Grading for Teachers",
+        description:
+            "Take attendance, save grades, and manage students from one clear teacher dashboard.",
+    },
+};
 
 const heroStats = [
     { label: "Attendance check-ins", value: "Seconds" },
