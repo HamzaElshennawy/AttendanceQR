@@ -44,8 +44,9 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import {
-    ArrowLeft,
-    ChevronRight,
+	    ArrowLeft,
+	    CalendarDays,
+	    ChevronRight,
     Plus,
     Download,
     Upload,
@@ -111,6 +112,28 @@ interface Session {
     radius_meters: number | null;
 }
 
+interface WeeklySession {
+    id: string;
+    group_id: string;
+    title: string;
+    category: "lecture" | "tutorial";
+    day_of_week: number;
+    start_time: string;
+    duration_minutes: number;
+    qr_rotating: boolean;
+    rotation_interval_seconds: number;
+    require_location: boolean;
+    radius_meters: number;
+    is_enabled: boolean;
+}
+
+interface GroupAttendanceRecord {
+    session_id: string;
+    student_id: string | null;
+    university_id: string;
+    status: AttendanceStatus;
+}
+
 interface CsvColumnOption {
     value: string;
     label: string;
@@ -170,6 +193,31 @@ const sessionCategoryCopy = {
     },
 } as const;
 
+const weekdayOptions = [
+    { value: "0", label: "Sunday" },
+    { value: "1", label: "Monday" },
+    { value: "2", label: "Tuesday" },
+    { value: "3", label: "Wednesday" },
+    { value: "4", label: "Thursday" },
+    { value: "5", label: "Friday" },
+    { value: "6", label: "Saturday" },
+] as const;
+
+const getWeekdayLabel = (day: number) =>
+    weekdayOptions.find((option) => Number(option.value) === day)?.label ||
+    "Weekly";
+
+const formatTemplateTime = (time: string) => {
+    const [hourValue, minuteValue] = time.split(":");
+    const date = new Date();
+    date.setHours(Number(hourValue || 0), Number(minuteValue || 0), 0, 0);
+
+    return date.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+};
+
 export default function GroupDetailPage() {
     const params = useParams();
     const router = useRouter();
@@ -180,6 +228,10 @@ export default function GroupDetailPage() {
     const [group, setGroup] = useState<Group | null>(null);
     const [students, setStudents] = useState<Student[]>([]);
     const [sessions, setSessions] = useState<Session[]>([]);
+    const [weeklySessions, setWeeklySessions] = useState<WeeklySession[]>([]);
+    const [attendanceRecords, setAttendanceRecords] = useState<
+        GroupAttendanceRecord[]
+    >([]);
     const [activeTab, setActiveTab] = useState<
         "sessions" | "coursework" | "students" | "team"
     >("sessions");
@@ -260,6 +312,9 @@ export default function GroupDetailPage() {
     // Start session dialog
     const [sessionOpen, setSessionOpen] = useState(false);
     const [sessionTitle, setSessionTitle] = useState("");
+    const [sessionCategory, setSessionCategory] = useState<
+        "lecture" | "tutorial"
+    >("lecture");
     const [sessionDuration, setSessionDuration] = useState("15");
     const [startingSession, setStartingSession] = useState(false);
     const [enableLocation, setEnableLocation] = useState(false);
@@ -270,6 +325,24 @@ export default function GroupDetailPage() {
     const [qrRotating, setQrRotating] = useState(true);
     const [rotationInterval, setRotationInterval] = useState("15");
     const [exportOpen, setExportOpen] = useState(false);
+    const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [weeklyOpen, setWeeklyOpen] = useState(false);
+    const [editingWeeklySession, setEditingWeeklySession] =
+        useState<WeeklySession | null>(null);
+    const [weeklyTitle, setWeeklyTitle] = useState("");
+    const [weeklyCategory, setWeeklyCategory] = useState<"lecture" | "tutorial">(
+        "lecture",
+    );
+    const [weeklyDay, setWeeklyDay] = useState("0");
+    const [weeklyStartTime, setWeeklyStartTime] = useState("09:00");
+    const [weeklyDuration, setWeeklyDuration] = useState("15");
+    const [weeklyQrRotating, setWeeklyQrRotating] = useState(true);
+    const [weeklyRotationInterval, setWeeklyRotationInterval] = useState("15");
+    const [weeklyRequireLocation, setWeeklyRequireLocation] = useState(false);
+    const [weeklyRadius, setWeeklyRadius] = useState("100");
+    const [weeklyEnabled, setWeeklyEnabled] = useState(true);
+    const [savingWeekly, setSavingWeekly] = useState(false);
 
     const fetchGroup = useCallback(async () => {
         const { data } = await supabase
@@ -327,6 +400,23 @@ export default function GroupDetailPage() {
                 }),
             );
             setSessions(sessionsWithCounts);
+
+            const sessionIds = sessionsWithCounts.map((session) => session.id);
+            if (sessionIds.length) {
+                const { data: attendanceData } = await supabase
+                    .from("attendance_records")
+                    .select("session_id, student_id, university_id, status")
+                    .in("session_id", sessionIds);
+
+                setAttendanceRecords(
+                    ((attendanceData || []) as GroupAttendanceRecord[]) || [],
+                );
+            } else {
+                setAttendanceRecords([]);
+            }
+        } else {
+            setSessions([]);
+            setAttendanceRecords([]);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupId]);
@@ -374,12 +464,24 @@ export default function GroupDetailPage() {
         setBillingSummary(data as BillingSummary);
     }, []);
 
+    const fetchWeeklySessions = useCallback(async () => {
+        const res = await fetch(`/api/groups/${groupId}/weekly-sessions`);
+        if (!res.ok) {
+            setWeeklySessions([]);
+            return;
+        }
+
+        const data = await res.json();
+        setWeeklySessions((data.weeklySessions || []) as WeeklySession[]);
+    }, [groupId]);
+
     useEffect(() => {
         Promise.all([
             fetchCurrentUser(),
             fetchGroup(),
             fetchStudents(),
             fetchSessions(),
+            fetchWeeklySessions(),
             fetchTeam(),
             fetchGradingSettings(),
             fetchBillingSummary(),
@@ -390,9 +492,45 @@ export default function GroupDetailPage() {
         fetchGroup,
         fetchStudents,
         fetchSessions,
+        fetchWeeklySessions,
         fetchTeam,
         fetchGradingSettings,
     ]);
+
+    useEffect(() => {
+        try {
+            const raw = window.localStorage.getItem(
+                `quorum-session-defaults-${groupId}`,
+            );
+            if (!raw) return;
+
+            const defaults = JSON.parse(raw) as {
+                duration?: string;
+                category?: "lecture" | "tutorial";
+                qrRotating?: boolean;
+                rotationInterval?: string;
+                radius?: string;
+            };
+
+            if (defaults.duration) setSessionDuration(defaults.duration);
+            if (defaults.category) setSessionCategory(defaults.category);
+            if (typeof defaults.qrRotating === "boolean") {
+                setQrRotating(defaults.qrRotating);
+            }
+            if (defaults.rotationInterval) {
+                setRotationInterval(defaults.rotationInterval);
+            }
+            if (defaults.radius) setSessionRadius(defaults.radius);
+        } catch {
+            // Keep built-in defaults when local storage is unavailable.
+        }
+    }, [groupId]);
+
+    useEffect(() => {
+        setSelectedStudentIds((current) =>
+            current.filter((id) => students.some((student) => student.id === id)),
+        );
+    }, [students]);
 
     // Rename group
     const handleRenameGroup = async (e: React.FormEvent) => {
@@ -480,6 +618,43 @@ export default function GroupDetailPage() {
             return;
         }
         fetchStudents();
+    };
+
+    const handleBulkDeleteStudents = async () => {
+        if (selectedStudentIds.length === 0) return;
+
+        const confirmed = await showConfirm({
+            title: "Remove Selected Students",
+            description: `${selectedStudentIds.length} selected students will be removed from this group.`,
+            confirmLabel: "Remove Students",
+            variant: "error",
+        });
+        if (!confirmed) return;
+
+        setBulkDeleting(true);
+        try {
+            const results = await Promise.all(
+                selectedStudentIds.map((id) =>
+                    fetch(`/api/groups/${groupId}/students/${id}`, {
+                        method: "DELETE",
+                    }),
+                ),
+            );
+
+            const failed = results.filter((response) => !response.ok).length;
+            if (failed > 0) {
+                await showAlert({
+                    title: "Some Students Were Not Removed",
+                    description: `${failed} selected students could not be removed. Refresh and try again if needed.`,
+                    variant: "warning",
+                });
+            }
+
+            setSelectedStudentIds([]);
+            await fetchStudents();
+        } finally {
+            setBulkDeleting(false);
+        }
     };
 
     const handleEditStudent = async (e: React.FormEvent) => {
@@ -623,12 +798,39 @@ export default function GroupDetailPage() {
         setImporting(true);
         const nameIndex = getColumnIndex(nameColumn);
         const idIndex = getColumnIndex(idColumn);
-        const studentsToInsert = csvData
-            .filter((row) => row[nameIndex]?.trim() && row[idIndex]?.trim())
-            .map((row) => ({
-                name: row[nameIndex].trim(),
-                university_id: row[idIndex].trim(),
-            }));
+        const existingIds = new Set(
+            students.map((student) => student.university_id.trim().toLowerCase()),
+        );
+        const seenIds = new Set<string>();
+        const studentsToInsert = csvData.flatMap((row) => {
+            const name = row[nameIndex]?.trim();
+            const universityId = row[idIndex]?.trim();
+            const normalizedId = universityId?.toLowerCase();
+
+            if (!name || !universityId || !normalizedId) return [];
+            if (seenIds.has(normalizedId) || existingIds.has(normalizedId)) {
+                return [];
+            }
+
+            seenIds.add(normalizedId);
+            return [
+                {
+                    name,
+                    university_id: universityId,
+                },
+            ];
+        });
+
+        if (studentsToInsert.length === 0) {
+            await showAlert({
+                title: "No New Students To Import",
+                description:
+                    "Every valid row is already enrolled, duplicated in the file, or missing a required value.",
+                variant: "warning",
+            });
+            setImporting(false);
+            return;
+        }
         const response = await fetch(`/api/groups/${groupId}/students/import`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -859,6 +1061,123 @@ export default function GroupDetailPage() {
         await fetchSessions();
     };
 
+    const resetWeeklyForm = () => {
+        setEditingWeeklySession(null);
+        setWeeklyTitle("");
+        setWeeklyCategory("lecture");
+        setWeeklyDay("0");
+        setWeeklyStartTime("09:00");
+        setWeeklyDuration(sessionDuration);
+        setWeeklyQrRotating(qrRotating);
+        setWeeklyRotationInterval(rotationInterval);
+        setWeeklyRequireLocation(false);
+        setWeeklyRadius(sessionRadius);
+        setWeeklyEnabled(true);
+    };
+
+    const openWeeklyForm = (template?: WeeklySession) => {
+        if (template) {
+            setEditingWeeklySession(template);
+            setWeeklyTitle(template.title);
+            setWeeklyCategory(template.category);
+            setWeeklyDay(String(template.day_of_week));
+            setWeeklyStartTime(template.start_time.slice(0, 5));
+            setWeeklyDuration(String(template.duration_minutes));
+            setWeeklyQrRotating(template.qr_rotating);
+            setWeeklyRotationInterval(
+                String(template.rotation_interval_seconds),
+            );
+            setWeeklyRequireLocation(template.require_location);
+            setWeeklyRadius(String(template.radius_meters));
+            setWeeklyEnabled(template.is_enabled);
+        } else {
+            resetWeeklyForm();
+        }
+        setWeeklyOpen(true);
+    };
+
+    const handleSaveWeeklySession = async (event: React.FormEvent) => {
+        event.preventDefault();
+        setSavingWeekly(true);
+
+        const payload = {
+            title: weeklyTitle,
+            category: weeklyCategory,
+            day_of_week: Number(weeklyDay),
+            start_time: weeklyStartTime,
+            duration_minutes: Number(weeklyDuration),
+            qr_rotating: weeklyQrRotating,
+            rotation_interval_seconds: Number(weeklyRotationInterval),
+            require_location: weeklyRequireLocation,
+            radius_meters: Number(weeklyRadius),
+            is_enabled: weeklyEnabled,
+        };
+        const url = editingWeeklySession
+            ? `/api/groups/${groupId}/weekly-sessions/${editingWeeklySession.id}`
+            : `/api/groups/${groupId}/weekly-sessions`;
+        const response = await fetch(url, {
+            method: editingWeeklySession ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            await showAlert({
+                title: "Failed To Save Weekly Session",
+                description: data.error || "Failed to save weekly session.",
+                variant: "error",
+            });
+            setSavingWeekly(false);
+            return;
+        }
+
+        setSavingWeekly(false);
+        setWeeklyOpen(false);
+        resetWeeklyForm();
+        await fetchWeeklySessions();
+    };
+
+    const handleDeleteWeeklySession = async (template: WeeklySession) => {
+        const confirmed = await showConfirm({
+            title: "Delete Weekly Session",
+            description: `${template.title} will be removed from this group's weekly schedule.`,
+            confirmLabel: "Delete",
+            variant: "error",
+        });
+        if (!confirmed) return;
+
+        const response = await fetch(
+            `/api/groups/${groupId}/weekly-sessions/${template.id}`,
+            { method: "DELETE" },
+        );
+
+        if (!response.ok) {
+            const data = await response.json();
+            await showAlert({
+                title: "Failed To Delete Weekly Session",
+                description: data.error || "Failed to delete weekly session.",
+                variant: "error",
+            });
+            return;
+        }
+
+        await fetchWeeklySessions();
+    };
+
+    const applyWeeklySessionTemplate = (template: WeeklySession) => {
+        setSessionTitle(template.title);
+        setSessionCategory(template.category);
+        setSessionDuration(String(template.duration_minutes));
+        setQrRotating(template.qr_rotating);
+        setRotationInterval(String(template.rotation_interval_seconds));
+        setEnableLocation(template.require_location);
+        setSessionRadius(String(template.radius_meters));
+        setSessionLat(null);
+        setSessionLng(null);
+        setSessionOpen(true);
+    };
+
     // Location
     const handleGetLocation = () => {
         setGettingLocation(true);
@@ -881,19 +1200,23 @@ export default function GroupDetailPage() {
         );
     };
 
-    // Session handling
-    const handleStartSession = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const startSession = async (options?: {
+        category?: "lecture" | "tutorial";
+        title?: string | null;
+    }) => {
         setStartingSession(true);
         const durationMinutes = parseInt(sessionDuration);
         const expiresAt = new Date(
             Date.now() + durationMinutes * 60 * 1000,
         ).toISOString();
+        const category = options?.category || sessionCategory;
+        const title =
+            options?.title !== undefined ? options.title : sessionTitle || null;
 
         const sessionData: Record<string, unknown> = {
             group_id: groupId,
-            title: sessionTitle || null,
-            category: currentRole === "ta" ? "tutorial" : "lecture",
+            title,
+            category,
             duration_minutes: durationMinutes,
             is_active: true,
             expires_at: expiresAt,
@@ -907,6 +1230,21 @@ export default function GroupDetailPage() {
 
         sessionData.qr_rotating = qrRotating;
         sessionData.rotation_interval_seconds = parseInt(rotationInterval);
+
+        try {
+            window.localStorage.setItem(
+                `quorum-session-defaults-${groupId}`,
+                JSON.stringify({
+                    duration: sessionDuration,
+                    category,
+                    qrRotating,
+                    rotationInterval,
+                    radius: sessionRadius,
+                }),
+            );
+        } catch {
+            // Defaults are a convenience only.
+        }
 
         const response = await fetch(`/api/groups/${groupId}/sessions`, {
             method: "POST",
@@ -929,6 +1267,12 @@ export default function GroupDetailPage() {
             });
         }
         setStartingSession(false);
+    };
+
+    // Session handling
+    const handleStartSession = async (e: React.FormEvent) => {
+        e.preventDefault();
+        await startSession();
     };
 
     const handleDownloadCumulativeExcel = async () => {
@@ -1207,6 +1551,97 @@ export default function GroupDetailPage() {
         );
     });
     const liveSessions = sessions.filter((session) => session.is_active).length;
+    const completedSessions = sessions.filter((session) => !session.is_active);
+    const completedSessionIds = new Set(
+        completedSessions.map((session) => session.id),
+    );
+    const completedAttendanceRecords = attendanceRecords.filter((record) =>
+        completedSessionIds.has(record.session_id),
+    );
+    const attendancePossible = completedSessions.length * students.length;
+    const attendanceRate =
+        attendancePossible > 0
+            ? Math.round(
+                  (completedAttendanceRecords.length / attendancePossible) * 100,
+              )
+            : 0;
+    const lowAttendanceStudents = students
+        .map((student) => {
+            const attended = completedAttendanceRecords.filter(
+                (record) => record.university_id === student.university_id,
+            ).length;
+            const rate =
+                completedSessions.length > 0
+                    ? Math.round((attended / completedSessions.length) * 100)
+                    : 0;
+
+            return { ...student, attended, rate };
+        })
+        .filter(
+            (student) =>
+                completedSessions.length > 0 &&
+                student.rate < 75,
+        )
+        .sort((a, b) => a.rate - b.rate)
+        .slice(0, 5);
+    const recentSessionInsights = completedSessions
+        .slice(0, 5)
+        .map((session) => ({
+            ...session,
+            rate:
+                students.length > 0
+                    ? Math.round((session.attendance_count / students.length) * 100)
+                    : 0,
+        }));
+    const csvImportPreview =
+        nameColumn && idColumn
+            ? (() => {
+                  const nameIndex = getColumnIndex(nameColumn);
+                  const idIndex = getColumnIndex(idColumn);
+                  const existingIds = new Set(
+                      students.map((student) =>
+                          student.university_id.trim().toLowerCase(),
+                      ),
+                  );
+                  const seenIds = new Set<string>();
+                  let valid = 0;
+                  let missing = 0;
+                  let duplicateInFile = 0;
+                  let alreadyEnrolled = 0;
+
+                  csvData.forEach((row) => {
+                      const name = row[nameIndex]?.trim();
+                      const universityId = row[idIndex]?.trim();
+                      const normalizedId = universityId?.toLowerCase();
+
+                      if (!name || !universityId || !normalizedId) {
+                          missing += 1;
+                          return;
+                      }
+
+                      if (seenIds.has(normalizedId)) {
+                          duplicateInFile += 1;
+                          return;
+                      }
+
+                      seenIds.add(normalizedId);
+
+                      if (existingIds.has(normalizedId)) {
+                          alreadyEnrolled += 1;
+                          return;
+                      }
+
+                      valid += 1;
+                  });
+
+                  return {
+                      valid,
+                      missing,
+                      duplicateInFile,
+                      alreadyEnrolled,
+                  };
+              })()
+            : null;
 
     return (
         <div className="space-y-6">
@@ -1349,6 +1784,142 @@ export default function GroupDetailPage() {
                 </div>
             </section>
 
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+                <Card className="border-border/70 bg-background/90">
+                    <CardContent className="space-y-5 p-5">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+                                    Attendance insights
+                                </Badge>
+                                <h2 className="mt-3 text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                    Group health
+                                </h2>
+                                <p className="mt-1 text-sm text-soft">
+                                    Completed sessions, attendance coverage, and students who may need follow-up.
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-card px-4 py-3 text-right">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                    Attendance rate
+                                </p>
+                                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-foreground">
+                                    {attendanceRate}%
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-3">
+                            <div className="rounded-2xl border border-border/70 bg-card p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                    Completed
+                                </p>
+                                <p className="mt-3 text-2xl font-semibold text-foreground">
+                                    {completedSessions.length}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-card p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                    Check-ins
+                                </p>
+                                <p className="mt-3 text-2xl font-semibold text-foreground">
+                                    {completedAttendanceRecords.length}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-card p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                                    Below 75%
+                                </p>
+                                <p className="mt-3 text-2xl font-semibold text-foreground">
+                                    {lowAttendanceStudents.length}
+                                </p>
+                            </div>
+                        </div>
+
+                        {recentSessionInsights.length > 0 ? (
+                            <div className="space-y-3">
+                                <p className="text-sm font-medium text-foreground">
+                                    Recent session trend
+                                </p>
+                                {recentSessionInsights.map((session) => (
+                                    <div key={session.id} className="grid gap-2 rounded-2xl border border-border/70 bg-card px-4 py-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium text-foreground">
+                                                {session.title || "Untitled Session"}
+                                            </p>
+                                            <p className="text-xs text-soft">
+                                                {session.attendance_count} of {students.length} attended
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-2 flex-1 rounded-full bg-secondary">
+                                                <div
+                                                    className="h-2 rounded-full bg-primary"
+                                                    style={{ width: `${session.rate}%` }}
+                                                />
+                                            </div>
+                                            <span className="w-10 text-right text-sm font-semibold text-foreground">
+                                                {session.rate}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-border/70 bg-card p-4 text-sm text-soft">
+                                Attendance insights will appear after the first completed session.
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-background/90">
+                    <CardContent className="space-y-4 p-5">
+                        <div>
+                            <Badge variant="warning" className="w-fit">
+                                Follow-up list
+                            </Badge>
+                            <h2 className="mt-3 text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                Students below threshold
+                            </h2>
+                            <p className="mt-1 text-sm text-soft">
+                                Students under 75% attendance across completed sessions.
+                            </p>
+                        </div>
+                        {lowAttendanceStudents.length > 0 ? (
+                            <div className="space-y-3">
+                                {lowAttendanceStudents.map((student) => (
+                                    <button
+                                        key={student.id}
+                                        type="button"
+                                        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:border-primary/30"
+                                        onClick={() =>
+                                            router.push(
+                                                `/dashboard/groups/${groupId}/students/${student.id}`,
+                                            )
+                                        }
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium text-foreground">
+                                                {student.name}
+                                            </p>
+                                            <p className="text-xs text-soft">
+                                                {student.attended} of {completedSessions.length} sessions
+                                            </p>
+                                        </div>
+                                        <Badge variant="outline">{student.rate}%</Badge>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-border/70 bg-card p-4 text-sm text-soft">
+                                No low-attendance students yet.
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </section>
+
             {/* Rename Dialog */}
             <Dialog
                 open={renameOpen}
@@ -1436,9 +2007,37 @@ export default function GroupDetailPage() {
                             </p>
                         </div>
                         <div
-                            className="flex justify-end gap-2"
+                            className="flex flex-wrap justify-end gap-2"
                             data-onboarding="sessions-actions"
                         >
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={startingSession || students.length === 0}
+                            onClick={() =>
+                                startSession({
+                                    category: "lecture",
+                                    title: sessionTitle || "Lecture",
+                                })
+                            }
+                        >
+                            <Play className="mr-2 h-4 w-4" />
+                            Start Lecture Now
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={startingSession || students.length === 0}
+                            onClick={() =>
+                                startSession({
+                                    category: "tutorial",
+                                    title: sessionTitle || "Tutorial",
+                                })
+                            }
+                        >
+                            <Play className="mr-2 h-4 w-4" />
+                            Start Tutorial Now
+                        </Button>
                         <Dialog
                             open={attendanceImportOpen}
                             onOpenChange={(open) => {
@@ -1933,7 +2532,34 @@ export default function GroupDetailPage() {
                                     </DialogHeader>
                                     <div className="space-y-4 py-4">
                                         <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                                            {/*This session will be created as a{" "}*/}
+                                            Session defaults are remembered for this group. Use the quick buttons next time to start with the same timing and QR settings.
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Session Type</Label>
+                                            <Select
+                                                value={sessionCategory}
+                                                onValueChange={(value) =>
+                                                    setSessionCategory(
+                                                        value as
+                                                            | "lecture"
+                                                            | "tutorial",
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="lecture">
+                                                        Lecture
+                                                    </SelectItem>
+                                                    <SelectItem value="tutorial">
+                                                        Tutorial
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="hidden rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
                                             <span className="font-semibold">
                                                 {currentRole === "ta"
                                                     ? "Tutorial"
@@ -2218,11 +2844,502 @@ export default function GroupDetailPage() {
                                     </DialogFooter>
                                 </form>
                             </DialogContent>
-                        </Dialog>
-                        </div>
-                    </div>
+	                        </Dialog>
+	                        </div>
+	                    </div>
 
-                    {sessions.length === 0 ? (
+                    <Card className="border-border/70 bg-background/90">
+                        <CardContent className="space-y-5 p-5 sm:p-6">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="space-y-2">
+                                    <Badge
+                                        variant="outline"
+                                        className="w-fit border-primary/20 bg-primary/5 text-primary"
+                                    >
+                                        Weekly schedule
+                                    </Badge>
+                                    <div>
+                                        <h3 className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                            Weekly sessions
+                                        </h3>
+                                        <p className="mt-1 max-w-2xl text-sm text-soft">
+                                            Configure recurring lectures or tutorials with the timing and QR settings you use every week.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Dialog
+                                    open={weeklyOpen}
+                                    onOpenChange={(open) => {
+                                        setWeeklyOpen(open);
+                                        if (!open) resetWeeklyForm();
+                                    }}
+                                >
+                                    <DialogTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => openWeeklyForm()}
+                                        >
+                                            <CalendarDays className="mr-2 h-4 w-4" />
+                                            Configure Weekly Session
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-h-[85vh] overflow-y-auto">
+                                        <form onSubmit={handleSaveWeeklySession}>
+                                            <DialogHeader>
+                                                <DialogTitle>
+                                                    {editingWeeklySession
+                                                        ? "Edit Weekly Session"
+                                                        : "Add Weekly Session"}
+                                                </DialogTitle>
+                                            </DialogHeader>
+                                            <div className="space-y-4 py-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="weeklyTitle">
+                                                        Title
+                                                    </Label>
+                                                    <Input
+                                                        id="weeklyTitle"
+                                                        value={weeklyTitle}
+                                                        onChange={(event) =>
+                                                            setWeeklyTitle(
+                                                                event.target.value,
+                                                            )
+                                                        }
+                                                        placeholder="Monday Lecture"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <div className="space-y-2">
+                                                        <Label>Type</Label>
+                                                        <Select
+                                                            value={weeklyCategory}
+                                                            onValueChange={(value) =>
+                                                                setWeeklyCategory(
+                                                                    value as
+                                                                        | "lecture"
+                                                                        | "tutorial",
+                                                                )
+                                                            }
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="lecture">
+                                                                    Lecture
+                                                                </SelectItem>
+                                                                <SelectItem value="tutorial">
+                                                                    Tutorial
+                                                                </SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Day</Label>
+                                                        <Select
+                                                            value={weeklyDay}
+                                                            onValueChange={setWeeklyDay}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {weekdayOptions.map(
+                                                                    (day) => (
+                                                                        <SelectItem
+                                                                            key={
+                                                                                day.value
+                                                                            }
+                                                                            value={
+                                                                                day.value
+                                                                            }
+                                                                        >
+                                                                            {
+                                                                                day.label
+                                                                            }
+                                                                        </SelectItem>
+                                                                    ),
+                                                                )}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="weeklyStartTime">
+                                                            Start Time
+                                                        </Label>
+                                                        <Input
+                                                            id="weeklyStartTime"
+                                                            type="time"
+                                                            value={weeklyStartTime}
+                                                            onChange={(event) =>
+                                                                setWeeklyStartTime(
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            required
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Duration</Label>
+                                                        <Select
+                                                            value={weeklyDuration}
+                                                            onValueChange={
+                                                                setWeeklyDuration
+                                                            }
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="5">
+                                                                    5 minutes
+                                                                </SelectItem>
+                                                                <SelectItem value="10">
+                                                                    10 minutes
+                                                                </SelectItem>
+                                                                <SelectItem value="15">
+                                                                    15 minutes
+                                                                </SelectItem>
+                                                                <SelectItem value="20">
+                                                                    20 minutes
+                                                                </SelectItem>
+                                                                <SelectItem value="30">
+                                                                    30 minutes
+                                                                </SelectItem>
+                                                                <SelectItem value="45">
+                                                                    45 minutes
+                                                                </SelectItem>
+                                                                <SelectItem value="60">
+                                                                    1 hour
+                                                                </SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <Label>
+                                                            Rotating QR Code
+                                                        </Label>
+                                                        <button
+                                                            type="button"
+                                                            role="switch"
+                                                            aria-checked={
+                                                                weeklyQrRotating
+                                                            }
+                                                            onClick={() =>
+                                                                setWeeklyQrRotating(
+                                                                    (value) =>
+                                                                        !value,
+                                                                )
+                                                            }
+                                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                                weeklyQrRotating
+                                                                    ? "bg-blue-600"
+                                                                    : "bg-gray-200"
+                                                            }`}
+                                                        >
+                                                            <span
+                                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                                    weeklyQrRotating
+                                                                        ? "translate-x-6"
+                                                                        : "translate-x-1"
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                    {weeklyQrRotating && (
+                                                        <div className="space-y-2">
+                                                            <Label>
+                                                                Rotation Interval
+                                                            </Label>
+                                                            <Select
+                                                                value={
+                                                                    weeklyRotationInterval
+                                                                }
+                                                                onValueChange={
+                                                                    setWeeklyRotationInterval
+                                                                }
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="5">
+                                                                        5 seconds
+                                                                    </SelectItem>
+                                                                    <SelectItem value="10">
+                                                                        10 seconds
+                                                                    </SelectItem>
+                                                                    <SelectItem value="15">
+                                                                        15 seconds
+                                                                    </SelectItem>
+                                                                    <SelectItem value="20">
+                                                                        20 seconds
+                                                                    </SelectItem>
+                                                                    <SelectItem value="30">
+                                                                        30 seconds
+                                                                    </SelectItem>
+                                                                    <SelectItem value="60">
+                                                                        60 seconds
+                                                                    </SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <Label>
+                                                            Require Location
+                                                        </Label>
+                                                        <button
+                                                            type="button"
+                                                            role="switch"
+                                                            aria-checked={
+                                                                weeklyRequireLocation
+                                                            }
+                                                            onClick={() =>
+                                                                setWeeklyRequireLocation(
+                                                                    (value) =>
+                                                                        !value,
+                                                                )
+                                                            }
+                                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                                weeklyRequireLocation
+                                                                    ? "bg-blue-600"
+                                                                    : "bg-gray-200"
+                                                            }`}
+                                                        >
+                                                            <span
+                                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                                    weeklyRequireLocation
+                                                                        ? "translate-x-6"
+                                                                        : "translate-x-1"
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                    {weeklyRequireLocation && (
+                                                        <div className="space-y-2">
+                                                            <Label>
+                                                                Allowed Radius
+                                                            </Label>
+                                                            <Select
+                                                                value={weeklyRadius}
+                                                                onValueChange={
+                                                                    setWeeklyRadius
+                                                                }
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="50">
+                                                                        50 meters
+                                                                    </SelectItem>
+                                                                    <SelectItem value="100">
+                                                                        100 meters
+                                                                    </SelectItem>
+                                                                    <SelectItem value="200">
+                                                                        200 meters
+                                                                    </SelectItem>
+                                                                    <SelectItem value="500">
+                                                                        500 meters
+                                                                    </SelectItem>
+                                                                    <SelectItem value="1000">
+                                                                        1 km
+                                                                    </SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card p-4">
+                                                    <div>
+                                                        <p className="text-sm font-medium text-foreground">
+                                                            Enabled
+                                                        </p>
+                                                        <p className="text-sm text-soft">
+                                                            Disabled templates stay saved but hidden from quick use.
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        role="switch"
+                                                        aria-checked={weeklyEnabled}
+                                                        onClick={() =>
+                                                            setWeeklyEnabled(
+                                                                (value) =>
+                                                                    !value,
+                                                            )
+                                                        }
+                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                            weeklyEnabled
+                                                                ? "bg-blue-600"
+                                                                : "bg-gray-200"
+                                                        }`}
+                                                    >
+                                                        <span
+                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                                weeklyEnabled
+                                                                    ? "translate-x-6"
+                                                                    : "translate-x-1"
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <DialogFooter>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        setWeeklyOpen(false)
+                                                    }
+                                                >
+                                                    Cancel
+                                                </Button>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={savingWeekly}
+                                                >
+                                                    {savingWeekly && (
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    )}
+                                                    Save Weekly Session
+                                                </Button>
+                                            </DialogFooter>
+                                        </form>
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
+
+                            {weeklySessions.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-border/70 bg-card p-5 text-sm text-soft">
+                                    No weekly sessions configured yet.
+                                </div>
+                            ) : (
+                                <div className="grid gap-3 xl:grid-cols-2">
+                                    {weeklySessions.map((template) => (
+                                        <div
+                                            key={template.id}
+                                            className={`rounded-2xl border p-4 ${
+                                                template.is_enabled
+                                                    ? "border-border/70 bg-card"
+                                                    : "border-dashed border-border/70 bg-card/60 opacity-75"
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <Badge
+                                                            variant="outline"
+                                                            className={
+                                                                sessionCategoryCopy[
+                                                                    template
+                                                                        .category
+                                                                ].badgeClass
+                                                            }
+                                                        >
+                                                            {
+                                                                sessionCategoryCopy[
+                                                                    template
+                                                                        .category
+                                                                ].label
+                                                            }
+                                                        </Badge>
+                                                        {!template.is_enabled && (
+                                                            <Badge variant="secondary">
+                                                                Disabled
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <h4 className="mt-3 truncate text-base font-semibold text-foreground">
+                                                        {template.title}
+                                                    </h4>
+                                                    <p className="mt-1 text-sm text-soft">
+                                                        {getWeekdayLabel(
+                                                            template.day_of_week,
+                                                        )}{" "}
+                                                        at{" "}
+                                                        {formatTemplateTime(
+                                                            template.start_time,
+                                                        )}{" "}
+                                                        ·{" "}
+                                                        {
+                                                            template.duration_minutes
+                                                        }{" "}
+                                                        min
+                                                    </p>
+                                                    <p className="mt-2 text-xs text-soft">
+                                                        {template.qr_rotating
+                                                            ? `QR rotates every ${template.rotation_interval_seconds}s`
+                                                            : "Static QR"}
+                                                        {template.require_location
+                                                            ? ` · Location within ${template.radius_meters}m`
+                                                            : ""}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8"
+                                                        onClick={() =>
+                                                            openWeeklyForm(
+                                                                template,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8"
+                                                        onClick={() =>
+                                                            handleDeleteWeeklySession(
+                                                                template,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 flex justify-end">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    disabled={
+                                                        !template.is_enabled
+                                                    }
+                                                    onClick={() =>
+                                                        applyWeeklySessionTemplate(
+                                                            template,
+                                                        )
+                                                    }
+                                                >
+                                                    <Play className="mr-2 h-4 w-4" />
+                                                    Use Template
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+	                    {sessions.length === 0 ? (
                         <Card
                             className="border-dashed border-primary/20 bg-gradient-to-br from-background via-background to-primary/6"
                             data-onboarding="sessions-history"
@@ -2406,11 +3523,24 @@ export default function GroupDetailPage() {
                                         placeholder="Search students by name or ID"
                                     />
                                 </div>
-                                <div
-                                    className="flex flex-wrap justify-start gap-2 lg:justify-end"
-                                    data-onboarding="students-actions"
-                                >
-                        {/* CSV Upload */}
+	                                <div
+	                                    className="flex flex-wrap justify-start gap-2 lg:justify-end"
+	                                    data-onboarding="students-actions"
+	                                >
+                                        {selectedStudentIds.length > 0 && (
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                                onClick={handleBulkDeleteStudents}
+                                                disabled={bulkDeleting}
+                                            >
+                                                {bulkDeleting && (
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                )}
+                                                Remove {selectedStudentIds.length}
+                                            </Button>
+                                        )}
+	                        {/* CSV Upload */}
                         <Dialog
                             open={csvOpen}
                             onOpenChange={(open) => {
@@ -2556,10 +3686,42 @@ export default function GroupDetailPage() {
                                                             </TableBody>
                                                         </Table>
                                                     </div>
-                                                    <p className="text-sm text-gray-500 mt-2">
-                                                        {csvData.length}{" "}
-                                                        students found
-                                                    </p>
+                                                    {csvImportPreview && (
+                                                        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4">
+                                                            <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                                                                <p className="text-xs text-soft">
+                                                                    Ready
+                                                                </p>
+                                                                <p className="font-semibold text-foreground">
+                                                                    {csvImportPreview.valid}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                                                                <p className="text-xs text-soft">
+                                                                    Missing
+                                                                </p>
+                                                                <p className="font-semibold text-foreground">
+                                                                    {csvImportPreview.missing}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                                                                <p className="text-xs text-soft">
+                                                                    Duplicates
+                                                                </p>
+                                                                <p className="font-semibold text-foreground">
+                                                                    {csvImportPreview.duplicateInFile}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                                                                <p className="text-xs text-soft">
+                                                                    Existing
+                                                                </p>
+                                                                <p className="font-semibold text-foreground">
+                                                                    {csvImportPreview.alreadyEnrolled}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                             {importResult && (
@@ -2608,7 +3770,7 @@ export default function GroupDetailPage() {
                                                 {importing && (
                                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                                 )}
-                                                Import {csvData.length} Students
+                                                Import {csvImportPreview?.valid ?? csvData.length} Students
                                             </Button>
                                         )}
                                 </DialogFooter>
@@ -2794,12 +3956,55 @@ export default function GroupDetailPage() {
                             <div className="overflow-hidden rounded-b-[28px]">
                                 <Table>
                                     <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Name</TableHead>
-                                            <TableHead>University ID</TableHead>
-                                            <TableHead className="w-24 text-right">
-                                                Action
-                                            </TableHead>
+	                                        <TableRow>
+	                                            <TableHead className="w-12">
+	                                                <input
+	                                                    type="checkbox"
+	                                                    aria-label="Select all visible students"
+	                                                    checked={
+	                                                        filteredStudents.length >
+	                                                            0 &&
+	                                                        filteredStudents.every(
+	                                                            (student) =>
+	                                                                selectedStudentIds.includes(
+	                                                                    student.id,
+	                                                                ),
+	                                                        )
+	                                                    }
+	                                                    onChange={(event) => {
+	                                                        const visibleIds =
+	                                                            filteredStudents.map(
+	                                                                (student) =>
+	                                                                    student.id,
+	                                                            );
+	                                                        setSelectedStudentIds(
+	                                                            (current) =>
+	                                                                event.target
+	                                                                    .checked
+	                                                                    ? Array.from(
+	                                                                          new Set([
+	                                                                              ...current,
+	                                                                              ...visibleIds,
+	                                                                          ]),
+	                                                                      )
+	                                                                    : current.filter(
+	                                                                          (id) =>
+	                                                                              !visibleIds.includes(
+	                                                                                  id,
+	                                                                              ),
+	                                                                      ),
+	                                                        );
+	                                                    }}
+	                                                    onClick={(event) =>
+	                                                        event.stopPropagation()
+	                                                    }
+	                                                />
+	                                            </TableHead>
+	                                            <TableHead>Name</TableHead>
+	                                            <TableHead>University ID</TableHead>
+	                                            <TableHead className="w-24 text-right">
+	                                                Action
+	                                            </TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -2812,10 +4017,39 @@ export default function GroupDetailPage() {
                                                         `/dashboard/groups/${groupId}/students/${student.id}`,
                                                     )
                                                 }
-                                            >
-                                                <TableCell className="font-medium">
-                                                    {student.name}
-                                                </TableCell>
+	                                            >
+	                                                <TableCell
+	                                                    onClick={(event) =>
+	                                                        event.stopPropagation()
+	                                                    }
+	                                                >
+	                                                    <input
+	                                                        type="checkbox"
+	                                                        aria-label={`Select ${student.name}`}
+	                                                        checked={selectedStudentIds.includes(
+	                                                            student.id,
+	                                                        )}
+	                                                        onChange={(event) =>
+	                                                            setSelectedStudentIds(
+	                                                                (current) =>
+	                                                                    event.target
+	                                                                        .checked
+	                                                                        ? [
+	                                                                              ...current,
+	                                                                              student.id,
+	                                                                          ]
+	                                                                        : current.filter(
+	                                                                              (id) =>
+	                                                                                  id !==
+	                                                                                  student.id,
+	                                                                          ),
+	                                                            )
+	                                                        }
+	                                                    />
+	                                                </TableCell>
+	                                                <TableCell className="font-medium">
+	                                                    {student.name}
+	                                                </TableCell>
                                                 <TableCell>
                                                     {student.university_id}
                                                 </TableCell>

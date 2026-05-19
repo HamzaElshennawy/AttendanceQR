@@ -8,9 +8,24 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
     {
+        version: "v0.9.0",
+        date: "May 20, 2026",
+        tag: "Latest",
+        title: "Weekly Sessions And Professor Workflow Upgrades",
+        notes: [
+            "Groups now include a weekly session configuration area where professors can save recurring lecture and tutorial templates by weekday, start time, duration, QR behavior, and location radius.",
+            "Weekly session templates can be enabled, disabled, edited, deleted, and used to prefill the normal live session start flow.",
+            "Session starts are faster with quick Lecture and Tutorial actions, remembered group defaults, and explicit session type selection.",
+            "The live session page now includes a searchable roster with attendance status and a manual Mark Present action for cases where QR check-in fails during class.",
+            "Completed sessions now open with a post-session Review tab that highlights attendance rate, absent students, manual overrides, late/excused records, violations, and export actions.",
+            "Group workspaces now show attendance insights, recent session trends, and low-attendance students who may need follow-up.",
+            "Student imports now preview ready, missing, duplicate, and already-enrolled rows before import, while bulk student removal is available from the roster.",
+        ],
+    },
+    {
         version: "v0.8.2",
         date: "May 6, 2026",
-        tag: "Latest",
+        tag: "Security",
         title: "Layered Device Fingerprinting for Attendance Integrity",
         notes: [
             "Device duplicate detection now uses two layers: a persistent device UUID stored in the browser for hard blocks, and a hardware-derived FingerprintJS signal for soft warnings.",
