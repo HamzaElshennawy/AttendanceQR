@@ -38,7 +38,43 @@ export async function POST(
         );
     }
 
-    const quota = await checkQuota(access.userId, "students", normalizedStudents.length);
+    const seenIds = new Set<string>();
+    const dedupedStudents = normalizedStudents.filter((student) => {
+        const key = student.university_id.toLowerCase();
+        if (seenIds.has(key)) return false;
+        seenIds.add(key);
+        return true;
+    });
+
+    const { data: existingStudents } = await supabaseAdmin
+        .from("students")
+        .select("university_id")
+        .eq("group_id", groupId)
+        .in(
+            "university_id",
+            dedupedStudents.map((student) => student.university_id),
+        );
+    const existingIds = new Set(
+        (existingStudents || []).map((student) =>
+            student.university_id.toLowerCase(),
+        ),
+    );
+    const studentsToInsert = dedupedStudents.filter(
+        (student) => !existingIds.has(student.university_id.toLowerCase()),
+    );
+
+    if (!studentsToInsert.length) {
+        return NextResponse.json({
+            success: 0,
+            skipped: normalizedStudents.length,
+            skippedDetails: {
+                duplicateInFile: normalizedStudents.length - dedupedStudents.length,
+                alreadyEnrolled: dedupedStudents.length,
+            },
+        });
+    }
+
+    const quota = await checkQuota(access.userId, "students", studentsToInsert.length);
     if (!quota.ok) {
         return NextResponse.json(
             { error: quota.message, code: "PLAN_LIMIT_REACHED" },
@@ -49,7 +85,7 @@ export async function POST(
     let success = 0;
     let skipped = 0;
 
-    for (const student of normalizedStudents) {
+    for (const student of studentsToInsert) {
         const { error } = await supabaseAdmin.from("students").insert(student);
         if (error) {
             skipped += 1;
@@ -58,5 +94,16 @@ export async function POST(
         }
     }
 
-    return NextResponse.json({ success, skipped });
+    return NextResponse.json({
+        success,
+        skipped:
+            skipped +
+            (normalizedStudents.length - dedupedStudents.length) +
+            existingIds.size,
+        skippedDetails: {
+            duplicateInFile: normalizedStudents.length - dedupedStudents.length,
+            alreadyEnrolled: existingIds.size,
+            insertFailed: skipped,
+        },
+    });
 }

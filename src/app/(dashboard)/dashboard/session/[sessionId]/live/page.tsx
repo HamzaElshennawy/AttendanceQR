@@ -6,6 +6,15 @@ import { createClient } from "@/lib/supabase/client";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
 import {
     ArrowLeft,
     ChevronRight,
@@ -17,12 +26,29 @@ import {
     Users,
     XCircle,
 } from "lucide-react";
+import { useAppDialog } from "@/components/AppDialogProvider";
+
+interface LiveStudent {
+    id: string;
+    name: string;
+    university_id: string;
+}
+
+interface LiveAttendanceRecord {
+    id: string;
+    student_id: string;
+    university_id: string;
+    status: "present" | "late" | "excused";
+    recorded_via: "qr" | "manual";
+    scanned_at: string;
+}
 
 export default function LiveSessionPage() {
     const params = useParams();
     const router = useRouter();
     const sessionId = params.sessionId as string;
     const supabase = createClient();
+    const { showAlert } = useAppDialog();
 
     const [token, setToken] = useState<string | null>(null);
     const [attendanceCount, setAttendanceCount] = useState(0);
@@ -40,6 +66,10 @@ export default function LiveSessionPage() {
     const [rotationInterval, setRotationInterval] = useState(15);
     const [rotationCountdown, setRotationCountdown] = useState(15);
     const [qrFullscreenOpen, setQrFullscreenOpen] = useState(false);
+    const [students, setStudents] = useState<LiveStudent[]>([]);
+    const [attendance, setAttendance] = useState<LiveAttendanceRecord[]>([]);
+    const [rosterSearch, setRosterSearch] = useState("");
+    const [markingStudentId, setMarkingStudentId] = useState<string | null>(null);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const rotationTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -67,7 +97,39 @@ export default function LiveSessionPage() {
             const interval = data.rotation_interval_seconds || 15;
             setRotationInterval(interval);
             setRotationCountdown(interval);
+
+            const [{ data: studentRows }, { data: attendanceRows }] =
+                await Promise.all([
+                    supabase
+                        .from("students")
+                        .select("id, name, university_id")
+                        .eq("group_id", data.group_id)
+                        .order("name"),
+                    supabase
+                        .from("attendance_records")
+                        .select(
+                            "id, student_id, university_id, status, recorded_via, scanned_at",
+                        )
+                        .eq("session_id", sessionId)
+                        .order("scanned_at", { ascending: false }),
+                ]);
+
+            setStudents((studentRows || []) as LiveStudent[]);
+            setAttendance((attendanceRows || []) as LiveAttendanceRecord[]);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId]);
+
+    const fetchLiveAttendance = useCallback(async () => {
+        const { data } = await supabase
+            .from("attendance_records")
+            .select(
+                "id, student_id, university_id, status, recorded_via, scanned_at",
+            )
+            .eq("session_id", sessionId)
+            .order("scanned_at", { ascending: false });
+
+        setAttendance((data || []) as LiveAttendanceRecord[]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
 
@@ -88,10 +150,11 @@ export default function LiveSessionPage() {
             setAttendanceCount(data.attendance_count);
             setTotalStudents(data.total_students);
             setExpiresAt(new Date(data.expires_at));
+            void fetchLiveAttendance();
         } catch {
             // Silent retry on next interval
         }
-    }, [sessionId]);
+    }, [fetchLiveAttendance, sessionId]);
 
     useEffect(() => {
         fetchSessionInfo();
@@ -177,7 +240,52 @@ export default function LiveSessionPage() {
         if (intervalRef.current) clearInterval(intervalRef.current);
     };
 
+    const handleMarkPresent = async (student: LiveStudent) => {
+        setMarkingStudentId(student.id);
+        try {
+            const response = await fetch(
+                `/api/sessions/${sessionId}/attendance-override`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        studentId: student.id,
+                        status: "present",
+                        note: "Marked present during live session.",
+                    }),
+                },
+            );
+            const data = await response.json();
+
+            if (!response.ok) {
+                await showAlert({
+                    title: "Could Not Mark Present",
+                    description: data.error || "Failed to mark this student present.",
+                    variant: "error",
+                });
+                return;
+            }
+
+            await Promise.all([rotateToken(), fetchLiveAttendance()]);
+        } finally {
+            setMarkingStudentId(null);
+        }
+    };
+
     const qrUrl = token ? `${appUrl}/attend/${sessionId}?token=${token}` : "";
+    const attendanceByStudentId = new Map(
+        attendance.map((record) => [record.student_id, record]),
+    );
+    const filteredStudents = students.filter((student) => {
+        const query = rosterSearch.trim().toLowerCase();
+        if (!query) return true;
+
+        return (
+            student.name.toLowerCase().includes(query) ||
+            student.university_id.toLowerCase().includes(query)
+        );
+    });
+    const absentCount = Math.max(students.length - attendance.length, 0);
 
     if (sessionEnded) {
         return (
@@ -200,9 +308,13 @@ export default function LiveSessionPage() {
                     <Button
                         variant="outline"
                         className="mt-8"
-                        onClick={() => router.push(`/dashboard/groups/${groupId}`)}
+                        onClick={() =>
+                            router.push(
+                                `/dashboard/groups/${groupId}/sessions/${sessionId}`,
+                            )
+                        }
                     >
-                        Back to Group
+                        Review Session
                     </Button>
                 </div>
             </div>
@@ -469,19 +581,17 @@ export default function LiveSessionPage() {
                             <div className="flex items-center justify-between gap-4">
                                 <div>
                                     <h3 className="text-lg font-semibold text-foreground">
-                                        Attendance snapshot
+                                        Live roster
                                     </h3>
                                     <p className="mt-1 text-sm text-soft">
-                                        This live view currently exposes totals
-                                        and timing. Detailed roster management
-                                        stays in the session and group flows.
+                                        Search students while the session is running and mark someone present if scanning fails.
                                     </p>
                                 </div>
                                 <Badge
                                     variant="outline"
                                     className="border-border/70 bg-background/80 text-foreground"
                                 >
-                                    Supported now
+                                    {absentCount} absent
                                 </Badge>
                             </div>
 
@@ -509,6 +619,114 @@ export default function LiveSessionPage() {
                                     <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground">
                                         {totalStudents}
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 space-y-3">
+                                <Input
+                                    value={rosterSearch}
+                                    onChange={(event) =>
+                                        setRosterSearch(event.target.value)
+                                    }
+                                    placeholder="Search roster by name or ID"
+                                />
+                                <div className="max-h-[420px] overflow-auto rounded-2xl border border-border/70">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Student</TableHead>
+                                                <TableHead>Status</TableHead>
+                                                <TableHead>Source</TableHead>
+                                                <TableHead className="w-36 text-right">
+                                                    Action
+                                                </TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredStudents.map((student) => {
+                                                const record =
+                                                    attendanceByStudentId.get(
+                                                        student.id,
+                                                    );
+
+                                                return (
+                                                    <TableRow key={student.id}>
+                                                        <TableCell>
+                                                            <p className="font-medium text-foreground">
+                                                                {student.name}
+                                                            </p>
+                                                            <p className="text-xs text-soft">
+                                                                {student.university_id}
+                                                            </p>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {record ? (
+                                                                <Badge
+                                                                    variant={
+                                                                        record.status ===
+                                                                        "present"
+                                                                            ? "success"
+                                                                            : "warning"
+                                                                    }
+                                                                >
+                                                                    {record.status ===
+                                                                    "excused"
+                                                                        ? "Excused"
+                                                                        : record.status ===
+                                                                            "late"
+                                                                          ? "Late"
+                                                                          : "Present"}
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="secondary">
+                                                                    Absent
+                                                                </Badge>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {record ? (
+                                                                <Badge variant="outline">
+                                                                    {record.recorded_via ===
+                                                                    "manual"
+                                                                        ? "Manual"
+                                                                        : "QR"}
+                                                                </Badge>
+                                                            ) : (
+                                                                "—"
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            {record ? (
+                                                                <span className="text-xs text-soft">
+                                                                    Recorded
+                                                                </span>
+                                                            ) : (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() =>
+                                                                        handleMarkPresent(
+                                                                            student,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        markingStudentId ===
+                                                                        student.id
+                                                                    }
+                                                                >
+                                                                    {markingStudentId ===
+                                                                        student.id && (
+                                                                        <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                                                                    )}
+                                                                    Mark present
+                                                                </Button>
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
                                 </div>
                             </div>
                         </div>
