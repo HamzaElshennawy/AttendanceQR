@@ -11,7 +11,7 @@
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@fingerprintjs/fingerprintjs": "^5.1.0",
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
     "@sentry/nextjs": "^10.69.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
