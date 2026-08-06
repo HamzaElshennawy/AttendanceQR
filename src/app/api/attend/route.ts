@@ -1,13 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { isCurrentSessionTokenValid } from "@/lib/attendance-security";
 import { defaultGradingSettings, shouldAutoMarkLate } from "@/lib/grading-settings";
-
-// Use service role to bypass RLS for attendance operations
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // Haversine formula to calculate distance between two coordinates in meters
 function getDistanceMeters(

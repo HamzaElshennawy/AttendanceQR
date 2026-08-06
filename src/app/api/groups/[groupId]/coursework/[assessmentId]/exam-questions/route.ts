@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireGroupAccess } from "@/lib/group-access";
+import { requireGroupAccessWithOwner } from "@/lib/group-access";
 import { requireFeature } from "@/lib/subscriptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -10,13 +10,13 @@ export async function POST(
     }: { params: Promise<{ groupId: string; assessmentId: string }> },
 ) {
     const { groupId, assessmentId } = await params;
-    const access = await requireGroupAccess(groupId);
+    const access = await requireGroupAccessWithOwner(groupId);
 
     if (!access) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const feature = await requireFeature(access.userId, "exams");
+    const feature = await requireFeature(access.ownerId, "exams");
     if (!feature.ok) {
         return NextResponse.json(
             {

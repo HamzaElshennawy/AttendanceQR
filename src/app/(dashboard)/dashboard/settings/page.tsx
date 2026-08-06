@@ -38,6 +38,7 @@ import {
     normalizeGradingSettings,
     type GradingSettings,
 } from "@/lib/grading-settings";
+import { BillingPanel } from "@/components/billing/BillingPanel";
 
 interface Group {
     id: string;
@@ -52,38 +53,6 @@ interface GroupSettingsForm {
     absent_grade: string;
     late_after_minutes: string;
 }
-
-//interface BillingSummary {
-//    subscription: {
-//        plan_tier: "free" | "plus" | "pro";
-//        status: string;
-//        current_period_end: string | null;
-//        cancel_at_period_end: boolean;
-//    };
-//    plan: {
-//        label: string;
-//        monthlyPriceLabel: string;
-//    };
-//    usage: {
-//        groups: number;
-//        students: number;
-//        sessionsThisMonth: number;
-//        teamMembers: number;
-//    };
-//    quotas: {
-//        groups: number;
-//        students: number;
-//        sessionsPerMonth: number;
-//        teamMembers: number;
-//    };
-//    features: {
-//        coursework: boolean;
-//        team_members: boolean;
-//        rich_reporting: boolean;
-//        advanced_exports: boolean;
-//        exams: boolean;
-//    };
-//}
 
 const defaultFormValues: GroupSettingsForm = {
     present_grade: String(defaultGradingSettings.present_grade),
@@ -112,11 +81,6 @@ export default function SettingsPage() {
         Record<string, { saving: boolean; message: string; error: string }>
     >({});
     const [loadingPolicies, setLoadingPolicies] = useState(true);
-    //const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
-    const [loadingBilling, setLoadingBilling] = useState(true);
-    const [billingActionLoading, setBillingActionLoading] = useState<
-        "" | "plus" | "pro" | "portal"
-    >("");
     const router = useRouter();
     const supabase = createClient();
 
@@ -177,22 +141,9 @@ export default function SettingsPage() {
         setLoadingPolicies(false);
     }, []);
 
-    const fetchBillingSummary = useCallback(async () => {
-        setLoadingBilling(true);
-        const response = await fetch("/api/billing/summary");
-        const payload = await response.json();
-        if (response.ok) {
-            //setBillingSummary(payload as BillingSummary);
-        } else {
-            //setBillingSummary(null);
-        }
-        setLoadingBilling(false);
-    }, []);
-
     useEffect(() => {
         fetchSettingsData();
-        fetchBillingSummary();
-    }, [fetchBillingSummary, fetchSettingsData]);
+    }, [fetchSettingsData]);
 
     const handleGroupSettingChange = (
         groupId: string,
@@ -272,38 +223,6 @@ export default function SettingsPage() {
                 error: "",
             },
         }));
-    };
-
-    const handleUpgrade = async (plan: "plus" | "pro") => {
-        setBillingActionLoading(plan);
-        const response = await fetch("/api/billing/checkout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ plan }),
-        });
-        const payload = await response.json();
-        setBillingActionLoading("");
-
-        if (!response.ok || !payload.url) {
-            setError(payload.error || "Failed to start checkout.");
-            return;
-        }
-
-        window.location.href = payload.url;
-    };
-
-    const handleManageBilling = async () => {
-        setBillingActionLoading("portal");
-        const response = await fetch("/api/billing/portal", { method: "POST" });
-        const payload = await response.json();
-        setBillingActionLoading("");
-
-        if (!response.ok || !payload.url) {
-            setError(payload.error || "Failed to open the billing portal.");
-            return;
-        }
-
-        window.location.href = payload.url;
     };
 
     const handleChangePassword = async (e: React.FormEvent) => {
@@ -542,149 +461,8 @@ export default function SettingsPage() {
                 </div>
             </section>
 
-            <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-                {
-                    //<Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
-                    //    <CardHeader>
-                    //        <Badge className="w-fit rounded-full border-primary/20 bg-primary/8 text-primary hover:bg-primary/8">
-                    //            Billing
-                    //        </Badge>
-                    //        <CardTitle>Plan and usage</CardTitle>
-                    //        <CardDescription>
-                    //            Track your current plan, usage limits, and upgrade
-                    //            path.
-                    //        </CardDescription>
-                    //    </CardHeader>
-                    //    <CardContent className="space-y-4">
-                    //        {
-                    //            //    loadingBilling ? (
-                    //            //    <div className="flex items-center justify-center py-10">
-                    //            //        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    //            //    </div>
-                    //            //) : billingSummary ? (
-                    //            //    <>
-                    //            //        <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                    //            //            <div className="flex items-center justify-between gap-3">
-                    //            //                <div>
-                    //            //                    <p className="text-sm font-medium text-foreground">
-                    //            //                        {billingSummary.plan.label}
-                    //            //                    </p>
-                    //            //                    <p className="mt-1 text-sm text-soft">
-                    //            //                        {billingSummary.plan.monthlyPriceLabel} · {billingSummary.subscription.status}
-                    //            //                    </p>
-                    //            //                </div>
-                    //            //                <Badge variant="outline" className="uppercase">
-                    //            //                    {billingSummary.subscription.plan_tier}
-                    //            //                </Badge>
-                    //            //            </div>
-                    //            //            {billingSummary.subscription.current_period_end && (
-                    //            //                <p className="mt-3 text-sm text-soft">
-                    //            //                    Current period ends on{" "}
-                    //            //                    {new Date(
-                    //            //                        billingSummary.subscription.current_period_end,
-                    //            //                    ).toLocaleDateString()}
-                    //            //                </p>
-                    //            //            )}
-                    //            //        </div>
-                    //            //        <div className="grid gap-3 md:grid-cols-2">
-                    //            //            <div className="rounded-xl border border-border/70 p-4">
-                    //            //                <p className="text-sm text-soft">Groups</p>
-                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
-                    //            //                    {billingSummary.usage.groups} / {billingSummary.quotas.groups}
-                    //            //                </p>
-                    //            //            </div>
-                    //            //            <div className="rounded-xl border border-border/70 p-4">
-                    //            //                <p className="text-sm text-soft">Students</p>
-                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
-                    //            //                    {billingSummary.usage.students} / {billingSummary.quotas.students}
-                    //            //                </p>
-                    //            //            </div>
-                    //            //            <div className="rounded-xl border border-border/70 p-4">
-                    //            //                <p className="text-sm text-soft">Sessions this month</p>
-                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
-                    //            //                    {billingSummary.usage.sessionsThisMonth} / {billingSummary.quotas.sessionsPerMonth}
-                    //            //                </p>
-                    //            //            </div>
-                    //            //            <div className="rounded-xl border border-border/70 p-4">
-                    //            //                <p className="text-sm text-soft">Team members</p>
-                    //            //                <p className="mt-2 text-2xl font-semibold text-foreground">
-                    //            //                    {billingSummary.usage.teamMembers} / {billingSummary.quotas.teamMembers}
-                    //            //                </p>
-                    //            //            </div>
-                    //            //        </div>
-                    //            //    </>
-                    //            //) : (
-                    //            //    <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-soft">
-                    //            //        Billing information is currently unavailable.
-                    //            //    </div>
-                    //            //    )
-                    //        }
-                    //    </CardContent>
-                    //</Card>
-                }
-                {
-                    //<Card className="border-border/70 shadow-[0_24px_60px_-42px_rgba(22,47,95,0.24)]">
-                    //    <CardHeader>
-                    //        <CardTitle>Upgrade path</CardTitle>
-                    //        <CardDescription>
-                    //            Move to a larger plan when you need more
-                    //            collaboration or advanced exam controls.
-                    //        </CardDescription>
-                    //    </CardHeader>
-                    //    <CardContent className="space-y-3">
-                    //        {
-                    //            //billingSummary?.subscription.plan_tier === "free" && (
-                    //            //<Button
-                    //            //    type="button"
-                    //            //    className="w-full"
-                    //            //    onClick={() => handleUpgrade("plus")}
-                    //            //    disabled={billingActionLoading !== ""}
-                    //            //>
-                    //            //    {billingActionLoading === "plus" && (
-                    //            //        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    //            //    )}
-                    //            //    Upgrade to Plus
-                    //            //</Button>
-                    //            //)
-                    //        }
-                    //        {
-                    //            //billingSummary?.subscription.plan_tier !== "pro" && (
-                    //            //<Button
-                    //            //    type="button"
-                    //            //    variant={
-                    //            //        billingSummary?.subscription.plan_tier ===
-                    //            //        "plus"
-                    //            //            ? "default"
-                    //            //            : "outline"
-                    //            //    }
-                    //            //    className="w-full"
-                    //            //    onClick={() => handleUpgrade("pro")}
-                    //            //    disabled={billingActionLoading !== ""}
-                    //            //>
-                    //            //    {billingActionLoading === "pro" && (
-                    //            //        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    //            //    )}
-                    //            //    Upgrade to Pro
-                    //            //</Button>
-                    //            //)
-                    //        }
-                    //        {
-                    //            //    <Button
-                    //            //    type="button"
-                    //            //    variant="ghost"
-                    //            //    className="w-full"
-                    //            //    onClick={handleManageBilling}
-                    //            //    disabled={billingActionLoading !== ""}
-                    //            //>
-                    //            //    {billingActionLoading === "portal" && (
-                    //            //        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    //            //    )}
-                    //            //    Manage Billing
-                    //            //</Button>
-                    //        }
-                    //    </CardContent>
-                    //</Card>
-                }
+            <section className="grid gap-5">
+                <BillingPanel />
             </section>
 
             <div className="mb-2 flex items-start justify-between gap-4">
