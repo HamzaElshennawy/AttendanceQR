@@ -12,7 +12,23 @@ begin;
 -- 1. professor_subscriptions: columns the billing rewrite depends on
 -- ---------------------------------------------------------------------------
 
+-- The first six are pre-existing in most deployments; they are listed anyway
+-- because the schema has drifted from the code and a missing one would abort
+-- this migration at a later statement. Every column here is read or written by
+-- src/lib/subscriptions.ts or the Stripe webhook.
 alter table public.professor_subscriptions
+    add column if not exists plan_tier text not null default 'free',
+    add column if not exists status text not null default 'free',
+    add column if not exists stripe_customer_id text,
+    add column if not exists stripe_subscription_id text,
+    add column if not exists stripe_price_id text,
+    add column if not exists current_period_start timestamptz,
+    add column if not exists current_period_end timestamptz,
+    add column if not exists cancel_at_period_end boolean not null default false,
+    add column if not exists grace_until timestamptz,
+    add column if not exists is_disabled boolean not null default false,
+    add column if not exists created_at timestamptz not null default now(),
+    add column if not exists updated_at timestamptz not null default now(),
     add column if not exists billing_interval text not null default 'month',
     -- Guards against Stripe's out-of-order webhook delivery. A stale
     -- subscription.updated arriving after subscription.deleted must not
@@ -48,13 +64,31 @@ create unique index if not exists professor_subscriptions_stripe_customer_id_key
     where stripe_customer_id is not null;
 
 -- ---------------------------------------------------------------------------
--- 2. Stripe webhook idempotency
+-- 2. Stripe webhook audit trail and idempotency
 -- ---------------------------------------------------------------------------
--- Deliberately separate from webhook_logs: that table is an append-only audit
--- trail that also records signature failures under a placeholder event id,
--- which would collide under a unique constraint. This table is the dedupe key
--- and nothing else.
+-- Audit trail for every Stripe delivery. The webhook's writes here are wrapped
+-- in try/catch so a missing table degrades rather than fails, but without it
+-- you lose the record of what Stripe sent and how it resolved — the first thing
+-- you want when a subscription looks wrong.
+create table if not exists public.webhook_logs (
+    id                     uuid primary key default gen_random_uuid(),
+    stripe_event_id        text,
+    event_type             text,
+    stripe_customer_id     text,
+    stripe_subscription_id text,
+    user_id                uuid,
+    resolved_plan_tier     text,
+    status                 text,
+    payload                jsonb,
+    error                  text,
+    created_at             timestamptz not null default now()
+);
 
+alter table public.webhook_logs enable row level security;
+
+-- The dedupe key, deliberately separate from webhook_logs: that table records
+-- signature failures under a placeholder event id, which would collide under a
+-- unique constraint. This one is the idempotency claim and nothing else.
 create table if not exists public.stripe_processed_events (
     stripe_event_id text primary key,
     event_type      text not null,
@@ -63,8 +97,9 @@ create table if not exists public.stripe_processed_events (
 
 alter table public.stripe_processed_events enable row level security;
 
--- No policies: reached only by the service-role client, which bypasses RLS.
--- Enabled explicitly so the table is never accidentally exposed via PostgREST.
+-- No policies on either: both are reached only by the service-role client,
+-- which bypasses RLS. Enabled explicitly so neither is ever accidentally
+-- exposed through PostgREST.
 
 -- ---------------------------------------------------------------------------
 -- 3. Cancellation retention funnel
@@ -105,7 +140,29 @@ alter table public.retention_events enable row level security;
 -- Service-role only, same rationale as above.
 
 -- ---------------------------------------------------------------------------
--- 4. attendance_records: close the check-then-insert race
+-- 4. attendance_records: reconcile with what the application writes
+-- ---------------------------------------------------------------------------
+-- The live table predates several features, so columns the code already
+-- inserts are missing. /api/attend writes device_id and device_fingerprint on
+-- every check-in, and the attendance-override route writes recorded_via, note,
+-- and overridden_by — a missing column makes PostgREST reject the whole insert,
+-- so check-in fails rather than degrading.
+--
+-- recorded_via defaults to 'qr', which backfills existing rows. Every record
+-- created before manual override existed came from the QR flow, and the
+-- override route reads this column to refuse replacing a genuine check-in;
+-- leaving it null would quietly disable that guard.
+
+alter table public.attendance_records
+    add column if not exists device_id text,
+    add column if not exists device_fingerprint text,
+    add column if not exists recorded_via text not null default 'qr',
+    add column if not exists note text,
+    add column if not exists overridden_by uuid,
+    add column if not exists updated_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- 4b. Close the check-then-insert race
 -- ---------------------------------------------------------------------------
 -- The API currently checks for an existing record and then inserts, so two
 -- concurrent check-ins can both pass the check. These indexes are the real
