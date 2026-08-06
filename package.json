@@ -29,7 +29,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sonner": "^2.0.7",
-    "stripe": "22.1.0",
+    "stripe": "22.4.0",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
