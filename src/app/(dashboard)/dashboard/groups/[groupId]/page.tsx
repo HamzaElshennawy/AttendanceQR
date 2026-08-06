@@ -69,154 +69,23 @@ import { readSpreadsheetFile } from "@/lib/spreadsheet";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { GroupOnboardingTutorial } from "@/components/GroupOnboardingTutorial";
 
-interface Group {
-    id: string;
-    name: string;
-    professor_id: string;
-}
-
-interface Student {
-    id: string;
-    university_id: string;
-    name: string;
-}
-
-interface TeamMember {
-    professor_id: string;
-    name: string;
-    email: string;
-    role: "owner" | "ta";
-}
-
-interface BillingSummary {
-    features: {
-        team_members: boolean;
-        advanced_exports: boolean;
-    };
-    plan: {
-        label: string;
-    };
-}
-
-interface Session {
-    id: string;
-    title: string | null;
-    category: "lecture" | "tutorial";
-    duration_minutes: number;
-    is_active: boolean;
-    started_at: string;
-    expires_at: string;
-    attendance_count: number;
-    latitude: number | null;
-    longitude: number | null;
-    radius_meters: number | null;
-}
-
-interface WeeklySession {
-    id: string;
-    group_id: string;
-    title: string;
-    category: "lecture" | "tutorial";
-    day_of_week: number;
-    start_time: string;
-    duration_minutes: number;
-    qr_rotating: boolean;
-    rotation_interval_seconds: number;
-    require_location: boolean;
-    radius_meters: number;
-    is_enabled: boolean;
-}
-
-interface GroupAttendanceRecord {
-    session_id: string;
-    student_id: string | null;
-    university_id: string;
-    status: AttendanceStatus;
-}
-
-interface CsvColumnOption {
-    value: string;
-    label: string;
-    index: number;
-}
-
-interface AttendanceImportSessionDraft {
-    id: string;
-    title: string;
-    category: "lecture" | "tutorial";
-    sessionDate: string;
-    column: string;
-}
-
-type ImportedAttendanceStatus = "present" | "late" | "excused";
-
-function normalizeImportedAttendanceStatus(
-    value: string | undefined,
-): ImportedAttendanceStatus | null {
-    const normalized = value?.trim().toLowerCase();
-
-    if (!normalized) {
-        return null;
-    }
-
-    if (
-        ["present", "p", "attended", "yes", "y", "1", "true"].includes(
-            normalized,
-        )
-    ) {
-        return "present";
-    }
-
-    if (["late", "l"].includes(normalized)) {
-        return "late";
-    }
-
-    if (["excused", "excuse", "e"].includes(normalized)) {
-        return "excused";
-    }
-
-    if (["absent", "a", "0", "false", "no", "n"].includes(normalized)) {
-        return null;
-    }
-
-    return null;
-}
-
-const sessionCategoryCopy = {
-    lecture: {
-        label: "Lecture",
-        badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
-    },
-    tutorial: {
-        label: "Tutorial",
-        badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
-    },
-} as const;
-
-const weekdayOptions = [
-    { value: "0", label: "Sunday" },
-    { value: "1", label: "Monday" },
-    { value: "2", label: "Tuesday" },
-    { value: "3", label: "Wednesday" },
-    { value: "4", label: "Thursday" },
-    { value: "5", label: "Friday" },
-    { value: "6", label: "Saturday" },
-] as const;
-
-const getWeekdayLabel = (day: number) =>
-    weekdayOptions.find((option) => Number(option.value) === day)?.label ||
-    "Weekly";
-
-const formatTemplateTime = (time: string) => {
-    const [hourValue, minuteValue] = time.split(":");
-    const date = new Date();
-    date.setHours(Number(hourValue || 0), Number(minuteValue || 0), 0, 0);
-
-    return date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-};
+import {
+    formatTemplateTime,
+    getWeekdayLabel,
+    normalizeImportedAttendanceStatus,
+    sessionCategoryCopy,
+    weekdayOptions,
+    type AttendanceImportSessionDraft,
+    type CsvColumnOption,
+    type GroupAttendanceRecord,
+    type GroupBillingSummary as BillingSummary,
+    type Group,
+    type ImportedAttendanceStatus,
+    type Session,
+    type Student,
+    type TeamMember,
+    type WeeklySession,
+} from "@/lib/group-detail";
 
 export default function GroupDetailPage() {
     const params = useParams();

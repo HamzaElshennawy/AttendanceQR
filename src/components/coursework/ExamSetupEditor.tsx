@@ -446,22 +446,26 @@ export function ExamSetupEditor({
         if (!assessment || !config) return;
 
         setSavingConfig(true);
-        const { error } = await supabase.from("assessment_exam_configs").upsert(
+
+        // Routed through the API rather than written from the browser: the
+        // server route re-checks group access and the Pro entitlement, neither
+        // of which a client-side write can enforce.
+        const response = await fetch(
+            `/api/groups/${assessment.group_id}/coursework/${assessment.id}/exam-setup`,
             {
-                ...config,
-                assessment_id: assessment.id,
-                group_id: assessment.group_id,
-                updated_at: new Date().toISOString(),
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ config }),
             },
-            { onConflict: "assessment_id" },
         );
+        const payload = await response.json().catch(() => ({}));
 
         setSavingConfig(false);
 
-        if (error) {
+        if (!response.ok) {
             await showAlert({
                 title: "Failed To Save Exam Settings",
-                description: error.message,
+                description: payload.error || "Please try again.",
                 variant: "error",
             });
             return;
@@ -504,81 +508,33 @@ export function ExamSetupEditor({
 
         setSavingQuestions(true);
 
-        const { error: deleteError } = await supabase
-            .from("assessment_questions")
-            .delete()
-            .eq("assessment_id", assessment.id);
+        // Questions and their choices carry `is_correct` — the exam answer key.
+        // Writing them from the browser put the whole replace-all sequence
+        // (delete, insert questions, insert choices) behind RLS policies alone,
+        // with no transaction and no entitlement check. The API route performs
+        // the same sequence server-side behind requireGroupAccess and the Pro
+        // gate.
+        const response = await fetch(
+            `/api/groups/${assessment.group_id}/coursework/${assessment.id}/exam-questions`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ questions }),
+            },
+        );
+        const payload = await response.json().catch(() => ({}));
 
-        if (deleteError) {
-            setSavingQuestions(false);
+        setSavingQuestions(false);
+
+        if (!response.ok) {
             await showAlert({
                 title: "Failed To Save Questions",
-                description: deleteError.message,
+                description: payload.error || "Please try again.",
                 variant: "error",
             });
             return;
         }
 
-        if (questions.length > 0) {
-            const questionRows = questions.map((question, index) => ({
-                id: question.id,
-                assessment_id: assessment.id,
-                prompt: question.prompt.trim(),
-                description: question.description?.trim() || null,
-                question_type: question.question_type,
-                points: Number(question.points || 0),
-                position: index,
-                is_required: question.is_required,
-                is_published: question.is_published,
-                answer_text: question.answer_text?.trim() || null,
-                updated_at: new Date().toISOString(),
-            }));
-
-            const { error: questionError } = await supabase
-                .from("assessment_questions")
-                .insert(questionRows);
-
-            if (questionError) {
-                setSavingQuestions(false);
-                await showAlert({
-                    title: "Failed To Save Questions",
-                    description: questionError.message,
-                    variant: "error",
-                });
-                return;
-            }
-
-            const choiceRows = questions.flatMap((question) =>
-                question.question_type === "multiple_choice" ||
-                question.question_type === "true_false"
-                    ? question.choices.map((choice, index) => ({
-                          id: choice.id,
-                          question_id: question.id,
-                          label: choice.label.trim(),
-                          position: index,
-                          is_correct: choice.is_correct,
-                      }))
-                    : [],
-            );
-
-            if (choiceRows.length > 0) {
-                const { error: choiceError } = await supabase
-                    .from("question_choices")
-                    .insert(choiceRows);
-
-                if (choiceError) {
-                    setSavingQuestions(false);
-                    await showAlert({
-                        title: "Failed To Save Choices",
-                        description: choiceError.message,
-                        variant: "error",
-                    });
-                    return;
-                }
-            }
-        }
-
-        setSavingQuestions(false);
         setStatusMessage("Questions saved.");
         await loadEditor();
         await onSaved();
