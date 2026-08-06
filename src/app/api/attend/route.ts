@@ -1,13 +1,28 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { isCurrentSessionTokenValid } from "@/lib/attendance-security";
 import { defaultGradingSettings, shouldAutoMarkLate } from "@/lib/grading-settings";
+import { logger } from "@/lib/logger";
+import {
+    RATE_LIMITS,
+    checkRateLimit,
+    clientIp,
+    tooManyRequests,
+} from "@/lib/rate-limit";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
-// Use service role to bypass RLS for attendance operations
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+/** Postgres unique-violation. */
+const UNIQUE_VIOLATION = "23505";
+
+/** Rejects NaN, Infinity, strings, and out-of-range coordinates. */
+function parseCoordinate(value: unknown, max: number): number | null {
+    const parsed = typeof value === "number" ? value : Number(value);
+
+    if (!Number.isFinite(parsed) || Math.abs(parsed) > max) {
+        return null;
+    }
+
+    return parsed;
+}
 
 // Haversine formula to calculate distance between two coordinates in meters
 function getDistanceMeters(
@@ -30,16 +45,17 @@ function getDistanceMeters(
 }
 
 export async function POST(request: Request) {
-    const body = await request.json();
-    const {
-        session_id,
-        university_id,
-        token,
-        latitude,
-        longitude,
-        fingerprint,
-        device_id,
-    } = body;
+    const body = await request.json().catch(() => null);
+
+    if (!body || typeof body !== "object") {
+        return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    }
+
+    const session_id = String(body.session_id || "").trim();
+    const university_id = String(body.university_id || "").trim();
+    const token = String(body.token || "").trim();
+    const fingerprint = body.fingerprint ? String(body.fingerprint) : null;
+    const device_id = body.device_id ? String(body.device_id) : null;
 
     if (!session_id || !university_id || !token) {
         return NextResponse.json(
@@ -48,12 +64,28 @@ export async function POST(request: Request) {
         );
     }
 
+    const ip = clientIp(request);
+
+    const rate = await checkRateLimit(RATE_LIMITS.attend, session_id, ip);
+    if (!rate.allowed) {
+        return tooManyRequests(
+            rate,
+            "Too many check-in attempts. Please wait a moment and try again.",
+        );
+    }
+
+    // Coordinates are validated up front so a malformed value cannot reach the
+    // Haversine maths and produce a NaN distance, which compares false against
+    // every radius and would silently pass the geofence.
+    const latitude = parseCoordinate(body.latitude, 90);
+    const longitude = parseCoordinate(body.longitude, 180);
+
     // 1. Check session exists and is active
     const { data: session, error: sessionError } = await supabaseAdmin
         .from("sessions")
         .select("*")
         .eq("id", session_id)
-        .single();
+        .maybeSingle();
 
     if (sessionError || !session) {
         return NextResponse.json(
@@ -98,14 +130,31 @@ export async function POST(request: Request) {
     }
 
     // 3. Validate student exists in the group
-    const { data: student, error: studentError } = await supabaseAdmin
+    const { data: student } = await supabaseAdmin
         .from("students")
         .select("*")
         .eq("group_id", session.group_id)
         .eq("university_id", university_id)
-        .single();
+        .maybeSingle();
 
-    if (studentError || !student) {
+    if (!student) {
+        // A distinct "not in this class" message reveals who is enrolled to
+        // anyone holding the QR token. Rather than blunt the message for the
+        // student who simply mistyped their ID, misses are counted separately
+        // and cut off quickly — enumeration needs many, a typo needs one.
+        const failures = await checkRateLimit(
+            RATE_LIMITS.attendFailure,
+            session_id,
+            ip,
+        );
+
+        if (!failures.allowed) {
+            return tooManyRequests(
+                failures,
+                "Too many failed attempts. Please check with your instructor.",
+            );
+        }
+
         return NextResponse.json(
             {
                 error: "Student ID not found in this class. Please check your ID and try again.",
@@ -166,7 +215,7 @@ export async function POST(request: Request) {
             .select("id, university_id")
             .eq("session_id", session_id)
             .eq("device_id", device_id)
-            .single();
+            .maybeSingle();
 
         if (existingDeviceId && existingDeviceId.university_id !== university_id) {
             const { data: originalStudent } = await supabaseAdmin
@@ -174,7 +223,7 @@ export async function POST(request: Request) {
                 .select("name")
                 .eq("group_id", session.group_id)
                 .eq("university_id", existingDeviceId.university_id)
-                .single();
+                .maybeSingle();
 
             // Hard violation — same persistent device UUID, different student
             await supabaseAdmin.from("violations").insert({
@@ -209,7 +258,7 @@ export async function POST(request: Request) {
             .select("id, university_id")
             .eq("session_id", session_id)
             .eq("device_fingerprint", fingerprint)
-            .single();
+            .maybeSingle();
 
         if (existingFingerprint && existingFingerprint.university_id !== university_id) {
             const { data: originalStudent } = await supabaseAdmin
@@ -217,7 +266,7 @@ export async function POST(request: Request) {
                 .select("name")
                 .eq("group_id", session.group_id)
                 .eq("university_id", existingFingerprint.university_id)
-                .single();
+                .maybeSingle();
 
             // Soft violation — log for professor review but allow check-in
             await supabaseAdmin.from("violations").insert({
@@ -238,13 +287,18 @@ export async function POST(request: Request) {
         }
     }
 
-    // 6. Check for duplicate attendance
+    // 6. Check for duplicate attendance.
+    //
+    // Advisory only: two concurrent requests can both pass this before either
+    // inserts. The unique index on (session_id, student_id) is the actual
+    // guarantee, handled at the insert below. This check exists to return a
+    // friendly message in the common, non-racing case.
     const { data: existing } = await supabaseAdmin
         .from("attendance_records")
         .select("id")
         .eq("session_id", session_id)
         .eq("student_id", student.id)
-        .single();
+        .maybeSingle();
 
     if (existing) {
         return NextResponse.json(
@@ -287,6 +341,23 @@ export async function POST(request: Request) {
         });
 
     if (insertError) {
+        // Lost the race against a concurrent check-in, or the same device tried
+        // twice. Both are "already checked in", not a server error.
+        if (insertError.code === UNIQUE_VIOLATION) {
+            return NextResponse.json(
+                {
+                    error: "You have already checked in for this session.",
+                    already_checked_in: true,
+                },
+                { status: 400 },
+            );
+        }
+
+        logger.error("Failed to record attendance", {
+            sessionId: session_id,
+            error: insertError,
+        });
+
         return NextResponse.json(
             { error: "Failed to record attendance. Please try again." },
             { status: 500 },

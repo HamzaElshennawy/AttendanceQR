@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireGroupAccess } from "@/lib/group-access";
+import { requireGroupAccess, requireGroupAccessWithOwner } from "@/lib/group-access";
 import { checkQuota, requireFeature } from "@/lib/subscriptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -8,7 +8,7 @@ export async function POST(
     { params }: { params: Promise<{ groupId: string }> },
 ) {
     const { groupId } = await params;
-    const access = await requireGroupAccess(groupId);
+    const access = await requireGroupAccessWithOwner(groupId);
 
     if (!access) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,15 +21,15 @@ export async function POST(
         );
     }
 
-    const feature = await requireFeature(access.userId, "team_members");
+    const feature = await requireFeature(access.ownerId, "team_members");
     if (!feature.ok) {
         return NextResponse.json(
-            { error: "Upgrade to Plus or Pro to add team members.", code: "PLAN_FEATURE_REQUIRED" },
+            { error: feature.message, code: "PLAN_FEATURE_REQUIRED" },
             { status: 403 },
         );
     }
 
-    const quota = await checkQuota(access.userId, "teamMembers", 1);
+    const quota = await checkQuota(access.ownerId, "teamMembers", 1);
     if (!quota.ok) {
         return NextResponse.json(
             { error: quota.message, code: "PLAN_LIMIT_REACHED" },

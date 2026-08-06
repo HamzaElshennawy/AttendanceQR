@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# The template carries no secrets and documents what the app needs to boot.
+!.env.example
 
 # vercel
 .vercel
@@ -40,7 +42,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-*.sql
+# Note: *.sql is deliberately NOT ignored. The database schema lives in
+# supabase/migrations/ and is the source of truth for deploys and rollbacks.
 *.csv
 *.xlsx
 /AGENTS

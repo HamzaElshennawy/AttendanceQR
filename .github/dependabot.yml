@@ -1,0 +1,24 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Framework packages have to move together or the build breaks.
+      next:
+        patterns: ["next", "eslint-config-next", "react", "react-dom", "@types/react*"]
+      dev:
+        dependency-type: development
+    ignore:
+      # Stripe major bumps change API response shapes; the pinned apiVersion in
+      # src/lib/stripe.ts has to be reviewed against the changelog by hand.
+      - dependency-name: stripe
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

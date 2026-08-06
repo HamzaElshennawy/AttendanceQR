@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const [university, setUniversity] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [confirmationSent, setConfirmationSent] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
@@ -26,7 +27,6 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // Create account via API route (bypasses RLS)
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -41,7 +41,14 @@ export default function RegisterPage() {
         return;
       }
 
-      // Sign in after successful registration
+      // Email confirmation is required, so there is no session to use yet.
+      // Attempting to sign in here would just fail with "email not confirmed".
+      if (data.requires_confirmation) {
+        setConfirmationSent(data.message);
+        setLoading(false);
+        return;
+      }
+
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -123,6 +130,11 @@ export default function RegisterPage() {
               New accounts start on the Free plan with small-pilot usage limits.
             </p>
           </div>
+          {confirmationSent && (
+            <p className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground">
+              {confirmationSent}
+            </p>
+          )}
           {error && (
             <p className="rounded-xl border border-destructive/15 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {error}

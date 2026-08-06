@@ -1,63 +1,98 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { appBaseUrl } from "@/lib/env";
+import { logger } from "@/lib/logger";
+import {
+    RATE_LIMITS,
+    checkRateLimit,
+    clientIp,
+    tooManyRequests,
+} from "@/lib/rate-limit";
+import { createClient } from "@/lib/supabase/server";
 
-// Use service role key to bypass RLS for professor profile creation
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+/** Supabase's own floor is 6; this is a deliberate step up from that. */
+const MIN_PASSWORD_LENGTH = 8;
 
 export async function POST(request: Request) {
-  const { name, email, password, university } = await request.json();
+    const ip = clientIp(request);
 
-  if (!name || !email || !password) {
-    return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 });
-  }
+    const rate = await checkRateLimit(RATE_LIMITS.register, ip);
+    if (!rate.allowed) {
+        return tooManyRequests(
+            rate,
+            "Too many sign-up attempts. Please try again later.",
+        );
+    }
 
-  // 1. Create auth user
-  const { data, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true, // Auto-confirm so they can log in immediately
-  });
+    const body = await request.json().catch(() => null);
 
-  if (signUpError) {
-    return NextResponse.json({ error: signUpError.message }, { status: 400 });
-  }
+    if (!body || typeof body !== "object") {
+        return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    }
 
-  if (!data.user) {
-    return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
-  }
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const password = String(body.password || "");
+    const university = String(body.university || "").trim();
 
-  // 2. Create professor profile (bypasses RLS with service role)
-  const { error: profileError } = await supabaseAdmin.from("professors").insert({
-    id: data.user.id,
-    name,
-    email,
-    university: university || null,
-  });
+    if (!name || !email || !password) {
+        return NextResponse.json(
+            { error: "Name, email, and password are required" },
+            { status: 400 },
+        );
+    }
 
-  if (profileError) {
-    // Clean up: delete the auth user if profile creation fails
-    await supabaseAdmin.auth.admin.deleteUser(data.user.id);
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
-  }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+        return NextResponse.json(
+            {
+                error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+            },
+            { status: 400 },
+        );
+    }
 
-  const { error: subscriptionError } = await supabaseAdmin
-    .from("professor_subscriptions")
-    .insert({
-      user_id: data.user.id,
-      plan_tier: "free",
-      status: "free",
-      cancel_at_period_end: false,
-      is_disabled: false,
+    // The anon client, deliberately — not the service role.
+    //
+    // This route used to call auth.admin.createUser with email_confirm: true,
+    // which bypassed Supabase's signup protections and marked every address
+    // verified without anyone proving they owned it. signUp() sends the
+    // confirmation mail and honours the project's rate limits and captcha.
+    //
+    // The professors and professor_subscriptions rows are created by the
+    // on_auth_user_created trigger, so there is no multi-step write here to
+    // roll back by hand.
+    const supabase = await createClient();
+
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+            data: { name, university: university || null },
+            emailRedirectTo: `${appBaseUrl()}/auth/callback`,
+        },
     });
 
-  if (subscriptionError) {
-    await supabaseAdmin.from("professors").delete().eq("id", data.user.id);
-    await supabaseAdmin.auth.admin.deleteUser(data.user.id);
-    return NextResponse.json({ error: subscriptionError.message }, { status: 500 });
-  }
+    if (error) {
+        logger.warn("Sign-up failed", { email, message: error.message });
 
-  return NextResponse.json({ success: true });
+        return NextResponse.json(
+            { error: error.message },
+            { status: error.status || 400 },
+        );
+    }
+
+    // Supabase returns a user with an empty identities array when the address is
+    // already registered, so that a signup attempt cannot be used to discover
+    // who has an account. Mirror that: report success either way.
+    const alreadyRegistered = data.user?.identities?.length === 0;
+
+    return NextResponse.json({
+        success: true,
+        // With email confirmation on there is no session yet, and the client
+        // must not try to sign in immediately.
+        requires_confirmation: !data.session,
+        message:
+            alreadyRegistered || !data.session
+                ? "Check your inbox for a confirmation link to finish setting up your account."
+                : "Account created.",
+    });
 }

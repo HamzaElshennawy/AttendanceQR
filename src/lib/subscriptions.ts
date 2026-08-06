@@ -1,40 +1,36 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+    PLAN_DEFINITIONS,
+    formatQuota,
+    minimumTierForFeature,
+    normalizePlanTier,
+    resolveEffectivePlan,
+    type BillingInterval,
+    type EntitlementFeature,
+    type PlanDefinition,
+    type PlanTier,
+    type SubscriptionStatus,
+} from "@/lib/plans";
 
-export type PlanTier = "free" | "plus" | "pro";
-export type SubscriptionStatus =
-    | "free"
-    | "trialing"
-    | "active"
-    | "past_due"
-    | "canceled"
-    | "unpaid"
-    | "incomplete"
-    | "incomplete_expired";
-
-export type EntitlementFeature =
-    | "coursework"
-    | "team_members"
-    | "rich_reporting"
-    | "advanced_exports"
-    | "exams";
-
-export interface PlanDefinition {
-    tier: PlanTier;
-    label: string;
-    monthlyPriceLabel: string;
-    features: Record<EntitlementFeature, boolean>;
-    quotas: {
-        groups: number;
-        students: number;
-        sessionsPerMonth: number;
-        teamMembers: number;
-    };
-}
+// Re-exported so existing imports from this module keep working.
+export {
+    ACTIVE_SUBSCRIPTION_STATUSES,
+    PLAN_DEFINITIONS,
+    normalizeBillingInterval,
+    normalizePlanTier,
+    planIncludesFeature,
+    type BillingInterval,
+    type EntitlementFeature,
+    type PlanDefinition,
+    type PlanTier,
+    type SubscriptionStatus,
+} from "@/lib/plans";
 
 export interface SubscriptionRecord {
     user_id: string;
     plan_tier: PlanTier;
     status: SubscriptionStatus;
+    billing_interval: BillingInterval;
     stripe_customer_id: string | null;
     stripe_subscription_id: string | null;
     stripe_price_id: string | null;
@@ -43,6 +39,9 @@ export interface SubscriptionRecord {
     cancel_at_period_end: boolean;
     grace_until: string | null;
     is_disabled: boolean;
+    paused_until: string | null;
+    retention_offer_claimed_at: string | null;
+    last_stripe_event_at: string | null;
     created_at?: string;
     updated_at?: string;
 }
@@ -56,10 +55,15 @@ export interface UsageSnapshot {
 
 export interface CurrentEntitlements {
     subscription: SubscriptionRecord;
+    /** The plan actually in force, after pause/grace/status resolution. */
     plan: PlanDefinition;
+    /** What the customer pays for, which may differ from `plan` while lapsed. */
+    subscribedPlan: PlanDefinition;
     usage: UsageSnapshot;
     features: Record<EntitlementFeature, boolean>;
     quotas: PlanDefinition["quotas"];
+    isPaused: boolean;
+    pausedUntil: string | null;
 }
 
 export interface QuotaCheckResult {
@@ -71,74 +75,12 @@ export interface QuotaCheckResult {
     message: string;
 }
 
-export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
-    free: {
-        tier: "free",
-        label: "Free",
-        monthlyPriceLabel: "$0",
-        features: {
-            coursework: true,
-            team_members: false,
-            rich_reporting: false,
-            advanced_exports: false,
-            exams: false,
-        },
-        quotas: {
-            groups: 1,
-            students: 50,
-            sessionsPerMonth: 10,
-            teamMembers: 0,
-        },
-    },
-    plus: {
-        tier: "plus",
-        label: "Plus",
-        monthlyPriceLabel: "$5/month",
-        features: {
-            coursework: true,
-            team_members: true,
-            rich_reporting: true,
-            advanced_exports: true,
-            exams: false,
-        },
-        quotas: {
-            groups: 5,
-            students: 500,
-            sessionsPerMonth: 200,
-            teamMembers: 5,
-        },
-    },
-    pro: {
-        tier: "pro",
-        label: "Pro",
-        monthlyPriceLabel: "$10/month",
-        features: {
-            coursework: true,
-            team_members: true,
-            rich_reporting: true,
-            advanced_exports: true,
-            exams: true,
-        },
-        quotas: {
-            groups: 999999,
-            students: 999999,
-            sessionsPerMonth: 999999,
-            teamMembers: 999999,
-        },
-    },
-};
-
-const ACTIVE_SUBSCRIPTION_STATUSES = new Set<SubscriptionStatus>([
-    "active",
-    "trialing",
-    "past_due",
-]);
-
 function defaultSubscription(userId: string): SubscriptionRecord {
     return {
         user_id: userId,
         plan_tier: "free",
         status: "free",
+        billing_interval: "month",
         stripe_customer_id: null,
         stripe_subscription_id: null,
         stripe_price_id: null,
@@ -147,18 +89,10 @@ function defaultSubscription(userId: string): SubscriptionRecord {
         cancel_at_period_end: false,
         grace_until: null,
         is_disabled: false,
+        paused_until: null,
+        retention_offer_claimed_at: null,
+        last_stripe_event_at: null,
     };
-}
-
-export function normalizePlanTier(value: unknown): PlanTier {
-    return value === "plus" || value === "pro" ? value : "free";
-}
-
-export function planIncludesFeature(
-    plan: PlanTier,
-    feature: EntitlementFeature,
-) {
-    return PLAN_DEFINITIONS[plan].features[feature];
 }
 
 export async function getOrCreateSubscriptionRecord(userId: string) {
@@ -176,10 +110,11 @@ export async function getOrCreateSubscriptionRecord(userId: string) {
         return data as SubscriptionRecord;
     }
 
-    const baseline = defaultSubscription(userId);
+    // upsert rather than insert: registration and a first billing call can race,
+    // and the unique index on user_id would turn that into a hard 500.
     const { data: created, error: createError } = await supabaseAdmin
         .from("professor_subscriptions")
-        .insert(baseline)
+        .upsert(defaultSubscription(userId), { onConflict: "user_id" })
         .select("*")
         .single();
 
@@ -195,34 +130,32 @@ export async function getUsageSnapshot(userId: string): Promise<UsageSnapshot> {
     monthStart.setUTCDate(1);
     monthStart.setUTCHours(0, 0, 0, 0);
 
-    const [{ data: groups }] = await Promise.all([
-        supabaseAdmin.from("groups").select("id").eq("professor_id", userId),
-    ]);
+    const { data: groups } = await supabaseAdmin
+        .from("groups")
+        .select("id")
+        .eq("professor_id", userId);
 
     const groupIds = (groups || []).map((group) => group.id);
 
-    const [studentsResult, sessionsResult, membershipsResult] =
-        await Promise.all([
-            groupIds.length
-                ? supabaseAdmin
-                      .from("students")
-                      .select("id", { count: "exact", head: true })
-                      .in("group_id", groupIds)
-                : Promise.resolve({ count: 0 } as { count: number | null }),
-            groupIds.length
-                ? supabaseAdmin
-                      .from("sessions")
-                      .select("id", { count: "exact", head: true })
-                      .in("group_id", groupIds)
-                      .gte("started_at", monthStart.toISOString())
-                : Promise.resolve({ count: 0 } as { count: number | null }),
-            groupIds.length
-                ? supabaseAdmin
-                      .from("group_memberships")
-                      .select("professor_id", { count: "exact", head: true })
-                      .in("group_id", groupIds)
-                : Promise.resolve({ count: 0 } as { count: number | null }),
-        ]);
+    if (!groupIds.length) {
+        return { groups: 0, students: 0, sessionsThisMonth: 0, teamMembers: 0 };
+    }
+
+    const [studentsResult, sessionsResult, membershipsResult] = await Promise.all([
+        supabaseAdmin
+            .from("students")
+            .select("id", { count: "exact", head: true })
+            .in("group_id", groupIds),
+        supabaseAdmin
+            .from("sessions")
+            .select("id", { count: "exact", head: true })
+            .in("group_id", groupIds)
+            .gte("started_at", monthStart.toISOString()),
+        supabaseAdmin
+            .from("group_memberships")
+            .select("professor_id", { count: "exact", head: true })
+            .in("group_id", groupIds),
+    ]);
 
     return {
         groups: groupIds.length,
@@ -236,39 +169,32 @@ export async function getCurrentEntitlements(
     userId: string,
 ): Promise<CurrentEntitlements> {
     const subscription = await getOrCreateSubscriptionRecord(userId);
-    // TIERING DISABLED: All users get Pro entitlements regardless of subscription.
-    // const planTier = normalizePlanTier(subscription.plan_tier);
     const usage = await getUsageSnapshot(userId);
-    // const plan = PLAN_DEFINITIONS[planTier];
 
-    // const now = Date.now();
-    // const isDisabled =
-    //     subscription.is_disabled ||
-    //     (subscription.grace_until
-    //         ? new Date(subscription.grace_until).getTime() < now
-    //         : false);
+    const subscribedPlan =
+        PLAN_DEFINITIONS[normalizePlanTier(subscription.plan_tier)];
 
-    // const effectivePlan =
-    //     isDisabled || !ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status)
-    //         ? PLAN_DEFINITIONS.free
-    //         : plan;
-
-    // TIERING DISABLED: Force Pro plan for all users
-    //const effectivePlan = PLAN_DEFINITIONS.pro;
+    // A paused customer drops to Free entitlements: they are not being billed
+    // and, by their own account, not teaching this term. Nothing is deleted, so
+    // their groups and history stay readable — Free quotas only gate creating
+    // new things, and everything returns on resume.
+    const { plan: effectivePlan, isPaused } = resolveEffectivePlan({
+        planTier: subscription.plan_tier,
+        status: subscription.status,
+        isDisabled: subscription.is_disabled,
+        graceUntil: subscription.grace_until,
+        pausedUntil: subscription.paused_until,
+    });
 
     return {
-        subscription: {
-            ...subscription,
-            //plan_tier: effectivePlan.tier,
-            plan_tier: PLAN_DEFINITIONS.pro.tier,
-        },
-        //plan: effectivePlan,
-        plan: PLAN_DEFINITIONS.pro,
+        subscription,
+        plan: effectivePlan,
+        subscribedPlan,
         usage,
-        //features: effectivePlan.features,
-        features: PLAN_DEFINITIONS.pro.features,
-        //quotas: effectivePlan.quotas,
-        quotas: PLAN_DEFINITIONS.pro.quotas,
+        features: effectivePlan.features,
+        quotas: effectivePlan.quotas,
+        isPaused,
+        pausedUntil: isPaused ? subscription.paused_until : null,
     };
 }
 
@@ -277,13 +203,18 @@ export async function requireFeature(
     feature: EntitlementFeature,
 ) {
     const entitlements = await getCurrentEntitlements(userId);
-    return {
-        ok: entitlements.features[feature],
-        entitlements,
-        message: entitlements.features[feature]
-            ? ""
-            : `${PLAN_DEFINITIONS.plus.features[feature] || PLAN_DEFINITIONS.pro.features[feature] ? "Upgrade your plan" : "Your current plan"} is required to use this feature.`,
-    };
+    const ok = entitlements.features[feature];
+
+    if (ok) {
+        return { ok, entitlements, message: "" };
+    }
+
+    const required = minimumTierForFeature(feature);
+    const message = required
+        ? `Upgrade to ${PLAN_DEFINITIONS[required].label} to use this feature.`
+        : "This feature is not available on your current plan.";
+
+    return { ok, entitlements, message };
 }
 
 export async function checkQuota(
@@ -298,9 +229,17 @@ export async function checkQuota(
         sessionsThisMonth: entitlements.quotas.sessionsPerMonth,
         teamMembers: entitlements.quotas.teamMembers,
     };
+
     const current = entitlements.usage[resource];
     const limit = limitMap[resource];
     const ok = current + requestedDelta <= limit;
+
+    const resourceLabel: Record<keyof UsageSnapshot, string> = {
+        groups: "groups",
+        students: "students",
+        sessionsThisMonth: "sessions per month",
+        teamMembers: "team members",
+    };
 
     return {
         ok,
@@ -310,6 +249,6 @@ export async function checkQuota(
         limit,
         message: ok
             ? ""
-            : `Your ${entitlements.plan.label} plan allows ${limit} ${resource}. Upgrade to continue.`,
+            : `Your ${entitlements.plan.label} plan allows ${formatQuota(limit)} ${resourceLabel[resource]}. Upgrade to continue.`,
     };
 }

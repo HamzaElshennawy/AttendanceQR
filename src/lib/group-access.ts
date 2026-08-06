@@ -51,6 +51,55 @@ export async function requireGroupAccess(
     };
 }
 
+/**
+ * The user whose plan quota a group's resources count against — always the
+ * group owner, never the acting user.
+ *
+ * Usage is measured over groups where `professor_id = userId`, so charging the
+ * acting user meant a TA's activity counted against nobody: they own no groups,
+ * so their snapshot is empty and every quota check passed regardless of the
+ * owner's plan.
+ */
+export async function resolveQuotaOwner(groupId: string): Promise<string | null> {
+    const { data: group } = await supabaseAdmin
+        .from("groups")
+        .select("professor_id")
+        .eq("id", groupId)
+        .single();
+
+    return group?.professor_id ?? null;
+}
+
+export interface GroupAccessWithOwner extends GroupAccessResult {
+    /** Group owner's user id — the account plan limits are charged against. */
+    ownerId: string;
+}
+
+/**
+ * Group access plus the owner to bill quota against.
+ *
+ * Note `role: "owner"` is not sufficient on its own: a co-owner added through
+ * group_memberships also reports that role but is not the group's
+ * `professor_id`, so their own plan would be charged instead of the owner's.
+ */
+export async function requireGroupAccessWithOwner(
+    groupId: string,
+): Promise<GroupAccessWithOwner | null> {
+    const access = await requireGroupAccess(groupId);
+
+    if (!access) {
+        return null;
+    }
+
+    const ownerId = await resolveQuotaOwner(groupId);
+
+    if (!ownerId) {
+        return null;
+    }
+
+    return { ...access, ownerId };
+}
+
 export async function requireSessionAccess(sessionId: string) {
     const { data: session } = await supabaseAdmin
         .from("sessions")

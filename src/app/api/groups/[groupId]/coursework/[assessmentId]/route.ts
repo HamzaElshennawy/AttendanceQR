@@ -13,6 +13,15 @@ export async function DELETE(
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    if (access.role !== "owner") {
+        // Teaching assistants run sessions and enter grades, but destructive
+        // deletes stay with the group owner.
+        return NextResponse.json(
+            { error: "Only the group owner can delete this." },
+            { status: 403 },
+        );
+    }
+
     const { error } = await supabaseAdmin
         .from("coursework_assessments")
         .delete()

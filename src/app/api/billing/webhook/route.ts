@@ -1,24 +1,37 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getStripeClient } from "@/lib/stripe";
+import { logger } from "@/lib/logger";
+import {
+    getStripeClient,
+    getStripeWebhookSecret,
+    resolvePriceId,
+    subscriptionIdFromInvoice,
+} from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { type PlanTier, type SubscriptionStatus } from "@/lib/subscriptions";
+import {
+    normalizePlanTier,
+    type BillingInterval,
+    type PlanTier,
+    type SubscriptionStatus,
+} from "@/lib/plans";
 
-function inferPlanTierFromPriceId(priceId: string | null): PlanTier {
-    if (priceId && priceId === process.env.STRIPE_PRO_PRICE_ID) {
-        return "pro";
-    }
+// Signature verification needs Node crypto, and the raw body must not be cached.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-    if (priceId && priceId === process.env.STRIPE_PLUS_PRICE_ID) {
-        return "plus";
-    }
+/** Dunning window granted when a renewal payment fails. */
+const GRACE_DAYS_AFTER_PAYMENT_FAILURE = 7;
 
-    return "free";
-}
+const UUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function toIso(seconds?: number | null) {
     return seconds ? new Date(seconds * 1000).toISOString() : null;
+}
+
+function daysFromNow(days: number) {
+    return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 async function logWebhookEvent(entry: {
@@ -44,237 +57,449 @@ async function logWebhookEvent(entry: {
             payload: entry.payload ?? null,
             error: entry.error ?? null,
         });
-    } catch (err) {
-        console.error("[webhook] Failed to write webhook_log:", err);
+    } catch (error) {
+        // The audit trail is best-effort; never fail an event because of it.
+        logger.error("Failed to write webhook_log", { error });
     }
 }
 
-async function persistSubscription(
-    customerId: string,
-    subscription: Stripe.Subscription | null,
-    eventId: string,
-    eventType: string,
-    overrides?: Partial<{
-        status: SubscriptionStatus;
-        plan_tier: PlanTier;
-        cancel_at_period_end: boolean;
-        is_disabled: boolean;
-        grace_until: string | null;
-    }>,
-) {
-    console.log("[webhook] persistSubscription called", { customerId, subscriptionId: subscription?.id, overrides });
+/**
+ * Idempotency claim.
+ *
+ * Stripe retries on any non-2xx and can deliver the same event more than once.
+ * Inserting against the primary key means only the first delivery proceeds.
+ * Returns false when the event has already been handled.
+ */
+async function claimEvent(eventId: string, eventType: string): Promise<boolean> {
+    const { error } = await supabaseAdmin
+        .from("stripe_processed_events")
+        .insert({ stripe_event_id: eventId, event_type: eventType });
 
-    const { data: record, error: lookupError } = await supabaseAdmin
-        .from("professor_subscriptions")
-        .select("user_id")
-        .eq("stripe_customer_id", customerId)
-        .maybeSingle();
-
-    if (lookupError) {
-        console.error("[webhook] DB lookup error for customer", customerId, lookupError);
-        await logWebhookEvent({
-            stripe_event_id: eventId,
-            event_type: eventType,
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscription?.id,
-            error: `DB lookup error: ${lookupError.message}`,
-        });
+    if (!error) {
+        return true;
     }
 
-    if (!record?.user_id) {
-        console.warn("[webhook] No professor_subscriptions row found for stripe_customer_id:", customerId);
+    if (error.code === "23505") {
+        return false;
+    }
+
+    throw error;
+}
+
+/**
+ * Released when handling fails, so Stripe's retry is allowed to try again
+ * rather than being rejected as a duplicate.
+ */
+async function releaseEvent(eventId: string) {
+    try {
+        await supabaseAdmin
+            .from("stripe_processed_events")
+            .delete()
+            .eq("stripe_event_id", eventId);
+    } catch (error) {
+        logger.error("Failed to release event claim", { eventId, error });
+    }
+}
+
+/**
+ * Metadata first, customer lookup second.
+ *
+ * The original implementation only looked up by `stripe_customer_id` and gave
+ * up silently when no row matched — so a subscription created outside our
+ * checkout flow, or one whose customer id failed to persist, left a paying
+ * customer with no access and no trace. Checkout sets `user_id` on both the
+ * session and the subscription, so that is the reliable link.
+ */
+async function resolveUserId(args: {
+    metadataUserId?: string | null;
+    customerId?: string | null;
+}): Promise<string | null> {
+    const fromMetadata = args.metadataUserId?.trim();
+
+    if (fromMetadata && UUID_PATTERN.test(fromMetadata)) {
+        return fromMetadata;
+    }
+
+    if (!args.customerId) {
+        return null;
+    }
+
+    const { data } = await supabaseAdmin
+        .from("professor_subscriptions")
+        .select("user_id")
+        .eq("stripe_customer_id", args.customerId)
+        .maybeSingle();
+
+    return data?.user_id ?? null;
+}
+
+interface PersistOverrides {
+    status?: SubscriptionStatus;
+    plan_tier?: PlanTier;
+    cancel_at_period_end?: boolean;
+    is_disabled?: boolean;
+    grace_until?: string | null;
+}
+
+async function persistSubscription(args: {
+    customerId: string | null;
+    subscription: Stripe.Subscription | null;
+    metadataUserId?: string | null;
+    eventId: string;
+    eventType: string;
+    eventCreated: number;
+    overrides?: PersistOverrides;
+}) {
+    const { customerId, subscription, eventId, eventType, eventCreated } = args;
+
+    const userId = await resolveUserId({
+        metadataUserId:
+            args.metadataUserId ?? subscription?.metadata?.user_id ?? null,
+        customerId,
+    });
+
+    if (!userId) {
+        // Retrying will not produce a link that does not exist, so this is
+        // logged loudly rather than retried forever.
+        logger.error("Stripe event could not be matched to a user", {
+            eventId,
+            eventType,
+            customerId,
+            subscriptionId: subscription?.id,
+        });
         await logWebhookEvent({
             stripe_event_id: eventId,
             event_type: eventType,
             stripe_customer_id: customerId,
             stripe_subscription_id: subscription?.id,
-            error: `No professor_subscriptions row found for stripe_customer_id: ${customerId}`,
+            error: "Unresolvable user: no metadata.user_id and no matching stripe_customer_id.",
         });
         return;
     }
 
-    console.log("[webhook] Found user_id:", record.user_id, "for customer:", customerId);
-
-    const priceId = subscription?.items.data[0]?.price.id || null;
-    const status = (subscription?.status || "free") as SubscriptionStatus;
-    const periodStart = subscription?.items.data[0]?.current_period_start ?? null;
-    const periodEnd = subscription?.items.data[0]?.current_period_end ?? null;
-    const planTierFromMeta = subscription?.metadata?.target_plan as PlanTier | undefined;
-    const resolvedTier = overrides?.plan_tier || planTierFromMeta || inferPlanTierFromPriceId(priceId);
-
-    console.log("[webhook] Resolved values", {
-        priceId,
-        status,
-        planTierFromMeta,
-        inferredTier: inferPlanTierFromPriceId(priceId),
-        resolvedTier,
-        periodStart,
-        periodEnd,
-        envPlusPriceId: process.env.STRIPE_PLUS_PRICE_ID,
-        envProPriceId: process.env.STRIPE_PRO_PRICE_ID,
-    });
-
-    const { error: updateError } = await supabaseAdmin
+    const { data: existing } = await supabaseAdmin
         .from("professor_subscriptions")
-        .update({
-            plan_tier: resolvedTier,
-            status: overrides?.status || status,
-            stripe_subscription_id: subscription?.id || null,
-            stripe_price_id: priceId,
-            current_period_start: toIso(periodStart),
-            current_period_end: toIso(periodEnd),
-            cancel_at_period_end:
-                overrides?.cancel_at_period_end ?? Boolean(subscription?.cancel_at_period_end),
-            grace_until:
-                overrides?.grace_until ??
-                toIso(periodEnd),
-            is_disabled: overrides?.is_disabled ?? false,
-            updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", record.user_id);
+        .select("plan_tier, billing_interval, last_stripe_event_at")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    if (updateError) {
-        console.error("[webhook] DB update error for user", record.user_id, updateError);
-        await logWebhookEvent({
-            stripe_event_id: eventId,
-            event_type: eventType,
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscription?.id,
-            user_id: record.user_id,
-            resolved_plan_tier: resolvedTier,
-            status: overrides?.status || status,
-            error: `DB update error: ${updateError.message}`,
+    // Stripe does not guarantee ordering. Without this, a stale
+    // subscription.updated arriving after subscription.deleted would resurrect
+    // a cancelled subscription.
+    const eventAt = new Date(eventCreated * 1000);
+
+    if (
+        existing?.last_stripe_event_at &&
+        new Date(existing.last_stripe_event_at).getTime() > eventAt.getTime()
+    ) {
+        logger.warn("Ignoring out-of-order Stripe event", {
+            eventId,
+            eventType,
+            userId,
+            eventAt: eventAt.toISOString(),
+            lastProcessedAt: existing.last_stripe_event_at,
         });
+        return;
+    }
+
+    const item = subscription?.items.data[0];
+    const priceId = item?.price.id ?? null;
+    const resolvedPrice = resolvePriceId(priceId);
+
+    if (priceId && !resolvedPrice) {
+        // Never silently downgrade: an unmapped price means the environment is
+        // misconfigured, not that the customer is on Free.
+        logger.error("Unrecognised Stripe price id — check price env vars", {
+            eventId,
+            eventType,
+            userId,
+            priceId,
+        });
+    }
+
+    let planTier: PlanTier;
+
+    if (args.overrides?.plan_tier) {
+        planTier = args.overrides.plan_tier;
+    } else if (resolvedPrice) {
+        planTier = resolvedPrice.tier;
+    } else if (priceId) {
+        // Unmapped price: keep whatever they already had rather than dropping
+        // a paying customer to Free.
+        planTier = normalizePlanTier(existing?.plan_tier);
     } else {
-        console.log("[webhook] Successfully updated subscription for user", record.user_id, "to tier:", resolvedTier);
+        planTier = "free";
+    }
+
+    const billingInterval: BillingInterval =
+        resolvedPrice?.interval ??
+        ((existing?.billing_interval as BillingInterval | undefined) ?? "month");
+
+    const status =
+        args.overrides?.status ??
+        ((subscription?.status as SubscriptionStatus | undefined) ?? "free");
+
+    const periodEnd = item?.current_period_end ?? null;
+
+    const { error: upsertError } = await supabaseAdmin
+        .from("professor_subscriptions")
+        .upsert(
+            {
+                user_id: userId,
+                plan_tier: planTier,
+                billing_interval: billingInterval,
+                status,
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscription?.id ?? null,
+                stripe_price_id: priceId,
+                current_period_start: toIso(item?.current_period_start ?? null),
+                current_period_end: toIso(periodEnd),
+                cancel_at_period_end:
+                    args.overrides?.cancel_at_period_end ??
+                    Boolean(subscription?.cancel_at_period_end),
+                grace_until:
+                    args.overrides?.grace_until !== undefined
+                        ? args.overrides.grace_until
+                        : toIso(periodEnd),
+                is_disabled: args.overrides?.is_disabled ?? false,
+                // Authoritative: Stripe keeps a paused subscription at status
+                // "active", so entitlements read this column instead.
+                paused_until: subscription?.pause_collection
+                    ? toIso(subscription.pause_collection.resumes_at)
+                    : null,
+                last_stripe_event_at: eventAt.toISOString(),
+                updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" },
+        );
+
+    if (upsertError) {
         await logWebhookEvent({
             stripe_event_id: eventId,
             event_type: eventType,
             stripe_customer_id: customerId,
             stripe_subscription_id: subscription?.id,
-            user_id: record.user_id,
-            resolved_plan_tier: resolvedTier,
-            status: overrides?.status || status,
-            payload: {
-                priceId,
-                planTierFromMeta,
-                inferredTier: inferPlanTierFromPriceId(priceId),
-                periodStart: toIso(periodStart),
-                periodEnd: toIso(periodEnd),
-            },
+            user_id: userId,
+            resolved_plan_tier: planTier,
+            status,
+            error: `DB upsert error: ${upsertError.message}`,
         });
+
+        // Thrown so the handler returns 500 and Stripe retries. Previously this
+        // was logged and the handler still returned 200, so a failed write was
+        // never retried and the subscription silently stayed wrong.
+        throw new Error(`Failed to persist subscription: ${upsertError.message}`);
+    }
+
+    await logWebhookEvent({
+        stripe_event_id: eventId,
+        event_type: eventType,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscription?.id,
+        user_id: userId,
+        resolved_plan_tier: planTier,
+        status,
+        payload: { priceId, billingInterval },
+    });
+}
+
+async function handleEvent(event: Stripe.Event) {
+    const stripe = getStripeClient();
+
+    switch (event.type) {
+        case "checkout.session.completed": {
+            const session = event.data.object as Stripe.Checkout.Session;
+            const customerId =
+                typeof session.customer === "string"
+                    ? session.customer
+                    : (session.customer?.id ?? null);
+
+            const subscriptionId =
+                typeof session.subscription === "string"
+                    ? session.subscription
+                    : (session.subscription?.id ?? null);
+
+            const subscription = subscriptionId
+                ? await stripe.subscriptions.retrieve(subscriptionId)
+                : null;
+
+            await persistSubscription({
+                customerId,
+                subscription,
+                metadataUserId:
+                    session.metadata?.user_id ?? session.client_reference_id,
+                eventId: event.id,
+                eventType: event.type,
+                eventCreated: event.created,
+            });
+            break;
+        }
+
+        case "customer.subscription.created":
+        case "customer.subscription.updated":
+        case "customer.subscription.paused":
+        case "customer.subscription.resumed": {
+            const subscription = event.data.object as Stripe.Subscription;
+
+            await persistSubscription({
+                customerId:
+                    typeof subscription.customer === "string"
+                        ? subscription.customer
+                        : subscription.customer.id,
+                subscription,
+                eventId: event.id,
+                eventType: event.type,
+                eventCreated: event.created,
+            });
+            break;
+        }
+
+        case "customer.subscription.deleted": {
+            const subscription = event.data.object as Stripe.Subscription;
+
+            await persistSubscription({
+                customerId:
+                    typeof subscription.customer === "string"
+                        ? subscription.customer
+                        : subscription.customer.id,
+                subscription,
+                eventId: event.id,
+                eventType: event.type,
+                eventCreated: event.created,
+                overrides: {
+                    status: "canceled",
+                    plan_tier: "free",
+                    is_disabled: true,
+                    grace_until: null,
+                },
+            });
+            break;
+        }
+
+        case "invoice.payment_failed": {
+            const invoice = event.data.object as Stripe.Invoice;
+            const subscriptionId = subscriptionIdFromInvoice(invoice);
+
+            if (!subscriptionId) {
+                // One-off invoice, nothing subscription-shaped to update.
+                break;
+            }
+
+            const subscription =
+                await stripe.subscriptions.retrieve(subscriptionId);
+
+            // Access is retained for the dunning window rather than cut off
+            // immediately. Previously grace_until was set to the period end,
+            // which for a past-due subscription is already in the past — so a
+            // single failed payment locked the customer out instantly.
+            await persistSubscription({
+                customerId:
+                    typeof invoice.customer === "string"
+                        ? invoice.customer
+                        : (invoice.customer?.id ?? null),
+                subscription,
+                eventId: event.id,
+                eventType: event.type,
+                eventCreated: event.created,
+                overrides: {
+                    status: "past_due",
+                    grace_until: daysFromNow(GRACE_DAYS_AFTER_PAYMENT_FAILURE),
+                },
+            });
+            break;
+        }
+
+        case "invoice.paid": {
+            const invoice = event.data.object as Stripe.Invoice;
+            const subscriptionId = subscriptionIdFromInvoice(invoice);
+
+            if (!subscriptionId) {
+                break;
+            }
+
+            const subscription =
+                await stripe.subscriptions.retrieve(subscriptionId);
+
+            // Recovery: grace reverts to the normal period end.
+            await persistSubscription({
+                customerId:
+                    typeof invoice.customer === "string"
+                        ? invoice.customer
+                        : (invoice.customer?.id ?? null),
+                subscription,
+                eventId: event.id,
+                eventType: event.type,
+                eventCreated: event.created,
+            });
+            break;
+        }
+
+        default:
+            logger.debug("Unhandled Stripe event type", { type: event.type });
+            break;
     }
 }
 
 export async function POST(request: Request) {
-    console.log("[webhook] ========== Stripe webhook received ==========");
-
     const signature = (await headers()).get("stripe-signature");
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-    if (!signature || !webhookSecret) {
-        console.error("[webhook] Missing signature or webhook secret", { hasSignature: !!signature, hasSecret: !!webhookSecret });
+    if (!signature) {
         return NextResponse.json(
-            { error: "Stripe webhook is not configured." },
+            { error: "Missing stripe-signature header." },
             { status: 400 },
         );
     }
 
     const body = await request.text();
-    const stripe = getStripeClient();
 
     let event: Stripe.Event;
+
     try {
-        event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+        event = getStripeClient().webhooks.constructEvent(
+            body,
+            signature,
+            getStripeWebhookSecret(),
+        );
     } catch (error) {
-        console.error("[webhook] Signature verification failed:", error instanceof Error ? error.message : error);
-        await logWebhookEvent({
-            stripe_event_id: "unknown",
-            event_type: "signature_verification_failed",
-            error: error instanceof Error ? error.message : "Invalid signature.",
-        });
+        logger.error("Stripe webhook signature verification failed", { error });
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : "Invalid signature." },
+            {
+                error:
+                    error instanceof Error ? error.message : "Invalid signature.",
+            },
             { status: 400 },
         );
     }
 
-    console.log("[webhook] Event verified:", event.type, "| Event ID:", event.id);
+    let claimed = false;
 
-    switch (event.type) {
-        case "checkout.session.completed": {
-            const session = event.data.object as Stripe.Checkout.Session;
-            console.log("[webhook] checkout.session.completed", {
-                customerId: session.customer,
-                subscriptionRef: session.subscription,
-                metadata: session.metadata,
-            });
-            if (session.customer && typeof session.customer === "string") {
-                const subscriptionId =
-                    typeof session.subscription === "string"
-                        ? session.subscription
-                        : session.subscription?.id;
-                const subscription = subscriptionId
-                    ? await stripe.subscriptions.retrieve(subscriptionId)
-                    : null;
-                console.log("[webhook] Retrieved subscription:", subscription?.id, "status:", subscription?.status);
-                await persistSubscription(session.customer, subscription, event.id, event.type);
-            } else {
-                console.warn("[webhook] checkout.session.completed but customer is not a string:", session.customer);
-                await logWebhookEvent({
-                    stripe_event_id: event.id,
-                    event_type: event.type,
-                    error: `customer is not a string: ${JSON.stringify(session.customer)}`,
-                });
-            }
-            break;
-        }
-        case "customer.subscription.created":
-        case "customer.subscription.updated": {
-            const subscription = event.data.object as Stripe.Subscription;
-            console.log(`[webhook] ${event.type}`, {
-                subscriptionId: subscription.id,
-                customerId: subscription.customer,
-                status: subscription.status,
-                metadata: subscription.metadata,
-            });
-            if (typeof subscription.customer === "string") {
-                await persistSubscription(subscription.customer, subscription, event.id, event.type);
-            } else {
-                console.warn(`[webhook] ${event.type} but customer is not a string:`, subscription.customer);
-                await logWebhookEvent({
-                    stripe_event_id: event.id,
-                    event_type: event.type,
-                    error: `customer is not a string: ${JSON.stringify(subscription.customer)}`,
-                });
-            }
-            break;
-        }
-        case "customer.subscription.deleted": {
-            const subscription = event.data.object as Stripe.Subscription;
-            console.log("[webhook] customer.subscription.deleted", {
-                subscriptionId: subscription.id,
-                customerId: subscription.customer,
-            });
-            if (typeof subscription.customer === "string") {
-                await persistSubscription(subscription.customer, subscription, event.id, event.type, {
-                    status: "canceled",
-                    plan_tier: "free",
-                    is_disabled: true,
-                });
-            }
-            break;
-        }
-        default:
-            console.log("[webhook] Unhandled event type:", event.type);
-            await logWebhookEvent({
-                stripe_event_id: event.id,
-                event_type: event.type,
-                payload: { note: "Unhandled event type" },
-            });
-            break;
+    try {
+        claimed = await claimEvent(event.id, event.type);
+    } catch (error) {
+        logger.error("Failed to claim Stripe event", { eventId: event.id, error });
+        // Return 500 so Stripe retries — dropping it here would lose the event.
+        return NextResponse.json({ error: "Internal error." }, { status: 500 });
     }
 
-    console.log("[webhook] ========== Webhook processing complete ==========");
+    if (!claimed) {
+        logger.info("Skipping duplicate Stripe event", {
+            eventId: event.id,
+            type: event.type,
+        });
+        return NextResponse.json({ received: true, duplicate: true });
+    }
+
+    try {
+        await handleEvent(event);
+    } catch (error) {
+        await releaseEvent(event.id);
+        logger.error("Stripe webhook handler failed", {
+            eventId: event.id,
+            type: event.type,
+            error,
+        });
+        return NextResponse.json({ error: "Internal error." }, { status: 500 });
+    }
+
     return NextResponse.json({ received: true });
 }
