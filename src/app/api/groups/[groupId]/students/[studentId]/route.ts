@@ -54,6 +54,15 @@ export async function DELETE(
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    if (access.role !== "owner") {
+        // Removing a student destroys their attendance and grade history.
+        // Teaching assistants can edit records but not delete people.
+        return NextResponse.json(
+            { error: "Only the group owner can remove students." },
+            { status: 403 },
+        );
+    }
+
     const { error } = await supabaseAdmin
         .from("students")
         .delete()

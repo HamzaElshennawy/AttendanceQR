@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { secureEquals } from "@/lib/secure-compare";
 import {
     buildAttemptPresentation,
     calculateAttemptMaxScore,
@@ -152,7 +153,10 @@ export async function startExamAttempt(args: {
         return { ok: false, status: 400, error: accessibility.message } as const;
     }
 
-    if (exam.config?.access_code && exam.config.access_code !== (args.accessCode || null)) {
+    if (
+        exam.config?.access_code &&
+        !secureEquals(exam.config.access_code, args.accessCode)
+    ) {
         return { ok: false, status: 400, error: "Access code is incorrect." } as const;
     }
 

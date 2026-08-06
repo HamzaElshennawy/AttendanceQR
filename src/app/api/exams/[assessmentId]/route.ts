@@ -7,6 +7,12 @@ import {
 import { getPublishedExamQuestions } from "@/lib/exam-service";
 import { formatExamWindow } from "@/lib/exams";
 import { requireFeature } from "@/lib/subscriptions";
+import {
+    RATE_LIMITS,
+    checkRateLimit,
+    clientIp,
+    tooManyRequests,
+} from "@/lib/rate-limit";
 
 export async function GET(
     _request: Request,
@@ -61,7 +67,23 @@ export async function POST(
     { params }: { params: Promise<{ assessmentId: string }> },
 ) {
     const { assessmentId } = await params;
-    const body = await request.json();
+
+    // Starting an attempt is where the access code is checked, so this is the
+    // brute-force surface. Keyed per assessment and address.
+    const rate = await checkRateLimit(
+        RATE_LIMITS.examStart,
+        assessmentId,
+        clientIp(request),
+    );
+
+    if (!rate.allowed) {
+        return tooManyRequests(
+            rate,
+            "Too many attempts. Please wait a few minutes and try again.",
+        );
+    }
+
+    const body = await request.json().catch(() => null);
 
     if (!body?.university_id) {
         return NextResponse.json(
