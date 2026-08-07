@@ -1,29 +1,37 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
     PLAN_DEFINITIONS,
+    TRIAL_PERIOD_DAYS,
+    canStartTrial,
     formatQuota,
     minimumTierForFeature,
     normalizePlanTier,
     resolveEffectivePlan,
+    resolveTrialState,
     type BillingInterval,
     type EntitlementFeature,
     type PlanDefinition,
     type PlanTier,
     type SubscriptionStatus,
+    type TrialState,
 } from "@/lib/plans";
 
 // Re-exported so existing imports from this module keep working.
 export {
     ACTIVE_SUBSCRIPTION_STATUSES,
     PLAN_DEFINITIONS,
+    TRIAL_PERIOD_DAYS,
+    canStartTrial,
     normalizeBillingInterval,
     normalizePlanTier,
     planIncludesFeature,
+    resolveTrialState,
     type BillingInterval,
     type EntitlementFeature,
     type PlanDefinition,
     type PlanTier,
     type SubscriptionStatus,
+    type TrialState,
 } from "@/lib/plans";
 
 export interface SubscriptionRecord {
@@ -42,6 +50,9 @@ export interface SubscriptionRecord {
     paused_until: string | null;
     retention_offer_claimed_at: string | null;
     last_stripe_event_at: string | null;
+    trial_started_at: string | null;
+    trial_ends_at: string | null;
+    has_used_trial: boolean;
     created_at?: string;
     updated_at?: string;
 }
@@ -64,6 +75,10 @@ export interface CurrentEntitlements {
     quotas: PlanDefinition["quotas"];
     isPaused: boolean;
     pausedUntil: string | null;
+    trial: TrialState;
+    /** Whether checkout would attach a free trial to a new subscription. */
+    canStartTrial: boolean;
+    trialPeriodDays: number;
 }
 
 export interface QuotaCheckResult {
@@ -92,6 +107,9 @@ function defaultSubscription(userId: string): SubscriptionRecord {
         paused_until: null,
         retention_offer_claimed_at: null,
         last_stripe_event_at: null,
+        trial_started_at: null,
+        trial_ends_at: null,
+        has_used_trial: false,
     };
 }
 
@@ -186,6 +204,12 @@ export async function getCurrentEntitlements(
         pausedUntil: subscription.paused_until,
     });
 
+    const trial = resolveTrialState({
+        status: subscription.status,
+        trialEndsAt: subscription.trial_ends_at,
+        hasUsedTrial: subscription.has_used_trial,
+    });
+
     return {
         subscription,
         plan: effectivePlan,
@@ -195,6 +219,15 @@ export async function getCurrentEntitlements(
         quotas: effectivePlan.quotas,
         isPaused,
         pausedUntil: isPaused ? subscription.paused_until : null,
+        trial,
+        // Mirrors the check the checkout route makes, so the button label and
+        // the session it creates can never disagree about whether a trial
+        // applies.
+        canStartTrial: canStartTrial({
+            hasUsedTrial: trial.hasUsedTrial,
+            stripeSubscriptionId: subscription.stripe_subscription_id,
+        }),
+        trialPeriodDays: TRIAL_PERIOD_DAYS,
     };
 }
 

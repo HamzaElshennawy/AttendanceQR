@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 
 import {
     PLAN_DEFINITIONS,
+    TRIAL_PERIOD_DAYS,
     annualSavingMonths,
+    canStartTrial,
     formatPrice,
     formatQuota,
     isUpgrade,
@@ -12,6 +14,7 @@ import {
     normalizePlanTier,
     planIncludesFeature,
     resolveEffectivePlan,
+    resolveTrialState,
     type EffectivePlanInput,
 } from "@/lib/plans";
 
@@ -199,4 +202,119 @@ test("access returns when the pause expires", () => {
 
     assert.equal(resumed.isPaused, false);
     assert.equal(resumed.plan.tier, "pro");
+});
+
+// ---------------------------------------------------------------------------
+// Free trial
+// ---------------------------------------------------------------------------
+
+function daysFrom(base: Date, days: number) {
+    return new Date(base.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+test("a live trial reports the days remaining", () => {
+    const state = resolveTrialState(
+        {
+            status: "trialing",
+            trialEndsAt: daysFrom(NOW, 5),
+            hasUsedTrial: true,
+        },
+        NOW,
+    );
+
+    assert.equal(state.isTrialing, true);
+    assert.equal(state.daysRemaining, 5);
+});
+
+test("a partial final day still counts as one day left, never zero or negative", () => {
+    const almostOver = resolveTrialState(
+        { status: "trialing", trialEndsAt: daysFrom(NOW, 0.25), hasUsedTrial: true },
+        NOW,
+    );
+
+    assert.equal(almostOver.isTrialing, true);
+    assert.equal(almostOver.daysRemaining, 1);
+});
+
+test("an expired trial is not trialing, even while the row still says so", () => {
+    // Stripe reports the trial-to-paid transition in a separate event, so the
+    // status can lag behind the end date. Counting down from that would render
+    // a negative number of days.
+    const state = resolveTrialState(
+        {
+            status: "trialing",
+            trialEndsAt: daysFrom(NOW, -1),
+            hasUsedTrial: true,
+        },
+        NOW,
+    );
+
+    assert.equal(state.isTrialing, false);
+    assert.equal(state.daysRemaining, 0);
+});
+
+test("a converted subscriber keeps hasUsedTrial but is no longer trialing", () => {
+    const state = resolveTrialState(
+        { status: "active", trialEndsAt: daysFrom(NOW, -3), hasUsedTrial: true },
+        NOW,
+    );
+
+    assert.equal(state.isTrialing, false);
+    assert.equal(state.hasUsedTrial, true);
+});
+
+test("a live trial implies the trial is used even if the flag lags", () => {
+    const state = resolveTrialState(
+        { status: "trialing", trialEndsAt: daysFrom(NOW, 9), hasUsedTrial: false },
+        NOW,
+    );
+
+    assert.equal(state.hasUsedTrial, true);
+});
+
+test("only a genuinely new account is offered a trial", () => {
+    assert.equal(
+        canStartTrial({ hasUsedTrial: false, stripeSubscriptionId: null }),
+        true,
+    );
+
+    // Trialled once already, then lapsed.
+    assert.equal(
+        canStartTrial({ hasUsedTrial: true, stripeSubscriptionId: null }),
+        false,
+    );
+
+    // Subscribed and cancelled without ever trialling — a returning customer,
+    // not a new one. Without this guard, cancelling would reset the offer.
+    assert.equal(
+        canStartTrial({ hasUsedTrial: false, stripeSubscriptionId: "sub_123" }),
+        false,
+    );
+
+    assert.equal(
+        canStartTrial({ hasUsedTrial: true, stripeSubscriptionId: "sub_123" }),
+        false,
+    );
+});
+
+test("trialing subscribers hold full plan entitlements for the whole window", () => {
+    // The trial is worthless if it does not actually unlock the tier, and the
+    // grace check must not treat the trial end date as an expiry.
+    const result = resolveEffectivePlan(
+        subscription({
+            planTier: "pro",
+            status: "trialing",
+            graceUntil: daysFrom(NOW, 3),
+        }),
+        NOW,
+    );
+
+    assert.equal(result.plan.tier, "pro");
+    assert.equal(result.lapsed, false);
+    assert.equal(result.plan.features.exams, true);
+});
+
+test("trial length is a positive whole number of days", () => {
+    assert.ok(Number.isInteger(TRIAL_PERIOD_DAYS));
+    assert.ok(TRIAL_PERIOD_DAYS > 0);
 });

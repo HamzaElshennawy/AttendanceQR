@@ -5,6 +5,8 @@ import { getAppBaseUrl, getStripeClient, getStripePriceId } from "@/lib/stripe";
 import { getOrCreateSubscriptionRecord } from "@/lib/subscriptions";
 import {
     ACTIVE_SUBSCRIPTION_STATUSES,
+    TRIAL_PERIOD_DAYS,
+    canStartTrial,
     normalizeBillingInterval,
     normalizePlanTier,
     type PaidPlanTier,
@@ -99,6 +101,15 @@ export async function POST(request: Request) {
 
     const baseUrl = getAppBaseUrl();
 
+    // Decided server-side from the stored record, never from the request body:
+    // the client tells us which plan to buy, not whether it is free for a
+    // fortnight. `has_used_trial` is set by the webhook when a trial actually
+    // starts, so an abandoned checkout does not burn the offer.
+    const trialEligible = canStartTrial({
+        hasUsedTrial: subscription.has_used_trial,
+        stripeSubscriptionId: subscription.stripe_subscription_id,
+    });
+
     const checkoutSession = await stripe.checkout.sessions.create({
         mode: "subscription",
         customer: customerId,
@@ -117,6 +128,7 @@ export async function POST(request: Request) {
             user_id: user.id,
             target_plan: targetPlan,
             billing_interval: interval,
+            trial_days: trialEligible ? String(TRIAL_PERIOD_DAYS) : "0",
         },
         subscription_data: {
             metadata: {
@@ -124,8 +136,25 @@ export async function POST(request: Request) {
                 target_plan: targetPlan,
                 billing_interval: interval,
             },
+            ...(trialEligible
+                ? {
+                      trial_period_days: TRIAL_PERIOD_DAYS,
+                      trial_settings: {
+                          // Checkout collects a card up front in subscription
+                          // mode, so this is the edge case where the card is
+                          // removed or expires mid-trial. Cancelling is the
+                          // honest outcome: no silent charge, no indefinite
+                          // free plan. Entitlements fall back to Free through
+                          // the normal subscription.deleted path.
+                          end_behavior: { missing_payment_method: "cancel" },
+                      },
+                  }
+                : {}),
         },
     });
 
-    return NextResponse.json({ url: checkoutSession.url });
+    return NextResponse.json({
+        url: checkoutSession.url,
+        trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0,
+    });
 }

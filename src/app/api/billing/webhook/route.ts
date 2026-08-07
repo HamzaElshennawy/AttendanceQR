@@ -179,7 +179,9 @@ async function persistSubscription(args: {
 
     const { data: existing } = await supabaseAdmin
         .from("professor_subscriptions")
-        .select("plan_tier, billing_interval, last_stripe_event_at")
+        .select(
+            "plan_tier, billing_interval, last_stripe_event_at, has_used_trial, trial_started_at, trial_ends_at",
+        )
         .eq("user_id", userId)
         .maybeSingle();
 
@@ -241,6 +243,28 @@ async function persistSubscription(args: {
 
     const periodEnd = item?.current_period_end ?? null;
 
+    // Stripe keeps trial_start / trial_end populated after a trial converts, so
+    // these stay accurate for the life of the subscription rather than being
+    // wiped on the first renewal.
+    //
+    // Only the subscription object is authoritative about the trial window. An
+    // event that carries no subscription says nothing about it, so the stored
+    // dates are kept rather than overwritten with null — blanking trial_ends_at
+    // mid-trial would leave the countdown with nothing to count.
+    const trialStartIso = subscription
+        ? toIso(subscription.trial_start ?? null)
+        : (existing?.trial_started_at ?? null);
+    const trialEndIso = subscription
+        ? toIso(subscription.trial_end ?? null)
+        : (existing?.trial_ends_at ?? null);
+
+    // Sticky in both directions: once true it never goes back to false, and a
+    // subscription that carries a trial window sets it even if the flag was
+    // somehow missed when the trial began. This is the only thing standing
+    // between us and a customer who cancels and re-trials indefinitely.
+    const hasUsedTrial =
+        Boolean(existing?.has_used_trial) || trialEndIso !== null;
+
     const { error: upsertError } = await supabaseAdmin
         .from("professor_subscriptions")
         .upsert(
@@ -267,6 +291,9 @@ async function persistSubscription(args: {
                 paused_until: subscription?.pause_collection
                     ? toIso(subscription.pause_collection.resumes_at)
                     : null,
+                trial_started_at: trialStartIso,
+                trial_ends_at: trialEndIso,
+                has_used_trial: hasUsedTrial,
                 last_stripe_event_at: eventAt.toISOString(),
                 updated_at: new Date().toISOString(),
             },
@@ -299,7 +326,12 @@ async function persistSubscription(args: {
         user_id: userId,
         resolved_plan_tier: planTier,
         status,
-        payload: { priceId, billingInterval },
+        payload: {
+            priceId,
+            billingInterval,
+            trialEndsAt: trialEndIso,
+            hasUsedTrial,
+        },
     });
 }
 
@@ -338,7 +370,12 @@ async function handleEvent(event: Stripe.Event) {
         case "customer.subscription.created":
         case "customer.subscription.updated":
         case "customer.subscription.paused":
-        case "customer.subscription.resumed": {
+        case "customer.subscription.resumed":
+        // Fires three days before a trial converts. Its data object is a
+        // Subscription like the rest, so persisting it keeps trial_ends_at
+        // fresh — and gives the audit trail a record of the warning, which is
+        // the hook a "your trial ends soon" email would later attach to.
+        case "customer.subscription.trial_will_end": {
             const subscription = event.data.object as Stripe.Subscription;
 
             await persistSubscription({

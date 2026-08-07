@@ -8,6 +8,7 @@ import { Check, Minus } from "lucide-react";
 import {
     PLAN_DEFINITIONS,
     PLAN_ORDER,
+    TRIAL_PERIOD_DAYS,
     annualSavingMonths,
     formatPrice,
     formatQuota,
@@ -42,8 +43,9 @@ export function PricingPlans({ signedIn }: { signedIn: boolean }) {
                     Pricing that fits the academic year
                 </h1>
                 <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">
-                    Start free with a single class. Move up when you need more room,
-                    and pay annually to cover twelve months for the price of ten.
+                    Start free with a single class. Every paid plan begins with a{" "}
+                    {TRIAL_PERIOD_DAYS}-day free trial, and paying annually covers
+                    twelve months for the price of ten.
                 </p>
 
                 <div
@@ -118,6 +120,13 @@ export function PricingPlans({ signedIn }: { signedIn: boolean }) {
                                 </p>
                             )}
 
+                            {tier !== "free" && (
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    {TRIAL_PERIOD_DAYS}-day free trial, then{" "}
+                                    {formatPrice(tier, interval)}
+                                </p>
+                            )}
+
                             <ul className="mt-6 space-y-2.5 text-sm">
                                 <li className="flex items-start gap-2">
                                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -162,7 +171,7 @@ export function PricingPlans({ signedIn }: { signedIn: boolean }) {
                                     <Link href={ctaHref}>
                                         {tier === "free"
                                             ? "Start free"
-                                            : `Choose ${plan.label}`}
+                                            : `Try ${plan.label} free`}
                                     </Link>
                                 </Button>
                             </div>
@@ -172,8 +181,9 @@ export function PricingPlans({ signedIn }: { signedIn: boolean }) {
             </div>
 
             <p className="mt-10 text-center text-sm text-muted-foreground">
-                Plans are billed per instructor account. Change or cancel at any time
-                from your settings.
+                Plans are billed per instructor account. The {TRIAL_PERIOD_DAYS}-day
+                trial is available once per account and charges nothing until it
+                ends. Change or cancel at any time from your settings.
             </p>
         </div>
     );

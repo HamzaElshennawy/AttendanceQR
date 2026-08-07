@@ -116,6 +116,18 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 
 export const PLAN_ORDER: PlanTier[] = ["free", "plus", "pro"];
 
+/**
+ * Length of the free trial granted on a first paid subscription.
+ *
+ * Two weeks covers a fortnight of real teaching — enough for an instructor to
+ * run several sessions and see attendance accumulate, which is the point at
+ * which the product is worth paying for. Changing this only affects trials
+ * started afterwards; Stripe fixes the end date on the subscription at creation.
+ */
+export const TRIAL_PERIOD_DAYS = 14;
+
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
 /** Statuses under which Stripe considers the customer to be in good standing. */
 export const ACTIVE_SUBSCRIPTION_STATUSES = new Set<SubscriptionStatus>([
     "active",
@@ -176,6 +188,84 @@ export function resolveEffectivePlan(
         isPaused,
         lapsed,
     };
+}
+
+export interface TrialStateInput {
+    status: SubscriptionStatus;
+    trialEndsAt: string | null;
+    hasUsedTrial: boolean;
+}
+
+export interface TrialState {
+    /** Inside a live trial window right now. */
+    isTrialing: boolean;
+    /** Trial already consumed. Sticky — a second one is never offered. */
+    hasUsedTrial: boolean;
+    endsAt: string | null;
+    /** Whole days left, rounded up so the last partial day still reads as 1. */
+    daysRemaining: number;
+}
+
+/**
+ * Trial status as the UI should present it.
+ *
+ * Deliberately requires both a "trialing" status and an unexpired end date. The
+ * status alone is not enough: Stripe reports the trial-to-paid transition with a
+ * separate event, so a row can briefly claim "trialing" past its end date, and
+ * counting down from that would show a negative number of days remaining.
+ *
+ * Entitlements are not decided here — "trialing" is already an active status in
+ * ACTIVE_SUBSCRIPTION_STATUSES, so a trialing subscriber gets the full plan
+ * through the normal path. This only describes the trial for display and for
+ * deciding whether another one may be offered.
+ */
+export function resolveTrialState(
+    input: TrialStateInput,
+    now: Date = new Date(),
+): TrialState {
+    const endsAtMs = input.trialEndsAt
+        ? new Date(input.trialEndsAt).getTime()
+        : null;
+
+    const isTrialing =
+        input.status === "trialing" &&
+        (endsAtMs === null || endsAtMs > now.getTime());
+
+    const daysRemaining =
+        isTrialing && endsAtMs !== null
+            ? Math.max(
+                  0,
+                  Math.ceil((endsAtMs - now.getTime()) / MILLISECONDS_PER_DAY),
+              )
+            : 0;
+
+    return {
+        isTrialing,
+        // A live trial implies the trial has been used, even if the column has
+        // not caught up yet — the webhook sets it on the same event that starts
+        // the trial, and this keeps the two from ever disagreeing.
+        hasUsedTrial: input.hasUsedTrial || isTrialing,
+        endsAt: input.trialEndsAt,
+        daysRemaining,
+    };
+}
+
+export interface TrialEligibilityInput {
+    hasUsedTrial: boolean;
+    stripeSubscriptionId: string | null;
+}
+
+/**
+ * Whether a first-time trial may be attached to a new checkout.
+ *
+ * Two independent guards, because either one alone leaks a free month. The
+ * `hasUsedTrial` flag catches someone who trialled and let it lapse; the
+ * subscription id catches someone who subscribed and cancelled without ever
+ * trialling, who is a returning customer rather than a new one. The webhook
+ * leaves both set after a cancellation, so neither resets.
+ */
+export function canStartTrial(input: TrialEligibilityInput): boolean {
+    return !input.hasUsedTrial && !input.stripeSubscriptionId;
 }
 
 export function normalizePlanTier(value: unknown): PlanTier {

@@ -47,6 +47,7 @@ npm run dev
 
 | | Free | Plus | Pro |
 |---|---|---|---|
+| Free trial | — | 14 days | 14 days |
 | Monthly | $0 | $5 | $10 |
 | Annual | — | $50 (2 months free) | $100 (2 months free) |
 | Groups | 1 | 5 | Unlimited |
@@ -65,6 +66,36 @@ whoever performs the action, so a TA's activity counts against the owner's plan.
 Plans are defined in `src/lib/plans.ts`. `resolveEffectivePlan()` is the single
 place that decides what a subscriber is entitled to right now, accounting for
 lapsed status, the dunning grace window, and pauses.
+
+## Free trial
+
+A first paid subscription starts with a `TRIAL_PERIOD_DAYS` (14 day) Stripe
+trial, attached in `/api/billing/checkout`. Trialling subscribers hold the full
+entitlements of the tier they picked — `trialing` is an active status, so no
+separate entitlement path is needed.
+
+Eligibility is decided server-side by `canStartTrial()` and never from the
+request body. Two independent guards, because either alone leaks a free
+fortnight:
+
+- `has_used_trial` — sticky, set by the webhook when a trial actually starts, so
+  an abandoned checkout does not burn the offer and a lapsed trialler cannot
+  claim a second one
+- `stripe_subscription_id` — catches a returning customer who subscribed and
+  cancelled without ever trialling
+
+Checkout collects a card up front, so the trial converts to a paid subscription
+automatically. If the card is removed or expires mid-trial, the subscription is
+cancelled rather than charged silently or left free indefinitely.
+
+`resolveTrialState()` reports the trial for display and requires both a
+`trialing` status *and* an unexpired end date — Stripe reports the
+trial-to-paid transition in a separate event, so a row can briefly claim
+`trialing` past its end date, and counting down from that would show negative
+days remaining.
+
+Cancelling during a trial sets `cancel_at_period_end`; the trial end *is* the
+period end, so access runs out the window and nothing is ever charged.
 
 ## Cancellation retention
 
@@ -106,8 +137,12 @@ All four run in CI on every pull request (`.github/workflows/ci.yml`).
 ## Deployment notes
 
 - Configure Stripe webhook delivery to `POST /api/billing/webhook`, subscribing
-  to `checkout.session.completed`, `customer.subscription.*`,
-  `invoice.paid`, and `invoice.payment_failed`
+  to `checkout.session.completed`, `customer.subscription.*` (which includes
+  `customer.subscription.trial_will_end`), `invoice.paid`, and
+  `invoice.payment_failed`
+- Create the four prices in Stripe as **recurring** prices — `trial_period_days`
+  is rejected on a one-off price — and set the monthly ones to bill monthly and
+  the annual ones yearly, matching `src/lib/plans.ts`
 - The Stripe API version is pinned in `src/lib/stripe.ts`. Bump it deliberately,
   with the changelog open — response shapes move between versions
 - Keep `SUPABASE_SERVICE_ROLE_KEY` server-only

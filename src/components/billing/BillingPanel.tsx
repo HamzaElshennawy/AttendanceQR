@@ -11,7 +11,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, Loader2, PauseCircle } from "lucide-react";
+import { AlertCircle, Loader2, PauseCircle, Sparkles } from "lucide-react";
 import {
     PLAN_DEFINITIONS,
     annualSavingMonths,
@@ -51,6 +51,14 @@ interface BillingSummary {
     features: Record<EntitlementFeature, boolean>;
     isPaused: boolean;
     pausedUntil: string | null;
+    trial: {
+        isTrialing: boolean;
+        hasUsedTrial: boolean;
+        endsAt: string | null;
+        daysRemaining: number;
+    };
+    canStartTrial: boolean;
+    trialPeriodDays: number;
 }
 
 function formatDate(value: string | null) {
@@ -215,9 +223,20 @@ export function BillingPanel() {
         );
     }
 
-    const { subscription, plan, usage, quotas, isPaused, pausedUntil } = summary;
+    const {
+        subscription,
+        plan,
+        usage,
+        quotas,
+        isPaused,
+        pausedUntil,
+        trial,
+        canStartTrial,
+        trialPeriodDays,
+    } = summary;
     const renewsOn = formatDate(subscription.current_period_end);
     const hasSubscription = Boolean(subscription.stripe_subscription_id);
+    const trialEndsOn = formatDate(trial.endsAt);
 
     return (
         <>
@@ -237,7 +256,9 @@ export function BillingPanel() {
                                     {plan.label}
                                 </span>
                                 <Badge variant="secondary">
-                                    {subscription.status}
+                                    {trial.isTrialing
+                                        ? "Free trial"
+                                        : subscription.status}
                                 </Badge>
                                 {subscription.billing_interval === "year" && (
                                     <Badge variant="outline">Annual</Badge>
@@ -247,7 +268,9 @@ export function BillingPanel() {
                                 <p className="text-sm text-muted-foreground">
                                     {subscription.cancel_at_period_end
                                         ? `Ends on ${renewsOn}`
-                                        : `Renews on ${renewsOn}`}
+                                        : trial.isTrialing
+                                          ? `First payment on ${renewsOn}`
+                                          : `Renews on ${renewsOn}`}
                                 </p>
                             )}
                         </div>
@@ -265,6 +288,37 @@ export function BillingPanel() {
                             </Button>
                         )}
                     </div>
+
+                    {trial.isTrialing && (
+                        <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                            <p>
+                                You&apos;re on a free trial of {plan.label} —{" "}
+                                <span className="font-medium">
+                                    {trial.daysRemaining}{" "}
+                                    {trial.daysRemaining === 1 ? "day" : "days"}{" "}
+                                    left
+                                </span>
+                                {trialEndsOn ? `, ending ${trialEndsOn}` : ""}.
+                                You won&apos;t be charged until it ends, and you
+                                can cancel any time before then.
+                            </p>
+                        </div>
+                    )}
+
+                    {canStartTrial && (
+                        <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                            <p>
+                                Your first paid plan starts with a{" "}
+                                <span className="font-medium">
+                                    {trialPeriodDays}-day free trial
+                                </span>
+                                . Pick a plan below — nothing is charged until
+                                the trial ends.
+                            </p>
+                        </div>
+                    )}
 
                     {isPaused && (
                         <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/50 p-3 text-sm">
@@ -379,6 +433,12 @@ export function BillingPanel() {
                                                 ? " · exams"
                                                 : ""}
                                         </p>
+                                        {canStartTrial && (
+                                            <p className="text-xs font-medium text-primary">
+                                                Free for the first{" "}
+                                                {trialPeriodDays} days
+                                            </p>
+                                        )}
                                     </div>
 
                                     <Button
@@ -395,7 +455,9 @@ export function BillingPanel() {
                                         )}
                                         {isCurrent
                                             ? "Current plan"
-                                            : `Switch to ${definition.label}`}
+                                            : canStartTrial
+                                              ? `Start ${trialPeriodDays}-day free trial`
+                                              : `Switch to ${definition.label}`}
                                     </Button>
                                 </div>
                             );
