@@ -209,7 +209,23 @@ export async function POST(request: Request) {
 
     // 5. Device duplicate check — layered: device_id = hard block, fingerprint = soft warning
     // 5a. Hard check: persistent device UUID (stored in browser localStorage + IndexedDB)
-    if (device_id) {
+    //
+    // Absence is rejected rather than skipped. Guarding the lookup on
+    // `if (device_id)` meant the one control stopping a student checking in for
+    // an absent friend was disabled by deleting a field from the request body —
+    // the record then stored device_id null, so the next omitted-id check-in had
+    // nothing to collide with either. The check-in page always sends one, so a
+    // request without it is not a browser doing the normal thing.
+    if (!device_id) {
+        return NextResponse.json(
+            {
+                error: "Your browser could not be identified. Please re-open the check-in link in your normal browser and try again.",
+            },
+            { status: 400 },
+        );
+    }
+
+    {
         const { data: existingDeviceId } = await supabaseAdmin
             .from("attendance_records")
             .select("id, university_id")
@@ -337,7 +353,9 @@ export async function POST(request: Request) {
             university_id,
             status: attendanceStatus,
             device_fingerprint: fingerprint || null,
-            device_id: device_id || null,
+            // Guaranteed present — the request is rejected above without it, so
+            // every row can be relied on for the duplicate-device check.
+            device_id,
         });
 
     if (insertError) {

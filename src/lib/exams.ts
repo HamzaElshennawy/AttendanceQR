@@ -319,6 +319,55 @@ export function buildAttemptPresentation(args: {
         );
 }
 
+/**
+ * Event types a student's browser is allowed to report.
+ *
+ * The attempt endpoint previously logged whatever `event_type` string arrived,
+ * so the proctoring trail was writable by whoever held the access token — the
+ * student being proctored. The risk is not junk rows: `tab_hidden` and
+ * `window_blur` are the signals an instructor reviews for cheating, and anyone
+ * could bury them under thousands of forged entries, or fabricate a `submitted`
+ * event that never happened.
+ *
+ * `started`, `submitted`, `timed_out`, and `duplicate_session_detected` are
+ * deliberately absent: those are written by the server when it observes the
+ * thing itself, and must never be assertable by the client.
+ */
+export const CLIENT_REPORTABLE_EVENT_TYPES = new Set<ExamEventType>([
+    "autosaved",
+    "tab_hidden",
+    "window_blur",
+    "refresh",
+    "reconnected",
+]);
+
+export function isClientReportableEvent(value: string): value is ExamEventType {
+    return CLIENT_REPORTABLE_EVENT_TYPES.has(value as ExamEventType);
+}
+
+/**
+ * Strips per-question grading from saved answers.
+ *
+ * `show_results_immediately` was enforced only in the client: the attempt
+ * response carried `is_correct` and `awarded_points` for every answer whatever
+ * the setting said, and the page merely chose not to render them. Reading them
+ * took one look at the network tab. On a multi-attempt exam that also handed a
+ * student the answer key for their next try.
+ *
+ * The student's own submitted answer is deliberately kept — it is their work,
+ * and the page redisplays it. Only the marking is removed.
+ */
+export function redactAnswerGrading(answers: AttemptAnswer[]): AttemptAnswer[] {
+    return answers.map((answer) => ({
+        ...answer,
+        is_correct: null,
+        awarded_points: null,
+        // Whether a question is queued for manual review says which ones were
+        // not auto-marked, so it goes too.
+        needs_manual_review: false,
+    }));
+}
+
 export function calculateAttemptMaxScore(
     questions: Pick<AssessmentQuestion, "points">[],
 ) {

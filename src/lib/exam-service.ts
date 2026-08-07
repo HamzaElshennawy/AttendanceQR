@@ -188,10 +188,18 @@ export async function startExamAttempt(args: {
     const attempts = (existingAttempts || []) as AssessmentAttempt[];
     const latestInProgress = attempts.find((attempt) => attempt.status === "in_progress");
     if (latestInProgress) {
-        // Hard check: persistent device UUID
+        // Hard check: persistent device UUID.
+        //
+        // A *missing* device id counts as a mismatch. Requiring `args.deviceId`
+        // to be present made the whole lock opt-in for the caller: omitting the
+        // field from the JSON body skipped the check and returned the in-
+        // progress attempt — including its access token — to anyone who knew a
+        // classmate's university id, which is enough to read or submit their
+        // exam. The browser always sends one (getOrCreateDeviceId falls back to
+        // a fresh UUID when storage is unavailable), so only a hand-crafted
+        // request arrives without it.
         if (
             latestInProgress.device_id &&
-            args.deviceId &&
             latestInProgress.device_id !== args.deviceId
         ) {
             await supabaseAdmin.from("attempt_events").insert({
@@ -199,7 +207,8 @@ export async function startExamAttempt(args: {
                 event_type: "duplicate_session_detected",
                 payload: {
                     previous_device_id: latestInProgress.device_id,
-                    attempted_device_id: args.deviceId,
+                    attempted_device_id: args.deviceId ?? null,
+                    device_id_missing: !args.deviceId,
                     severity: "hard",
                 },
             });

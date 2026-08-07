@@ -116,6 +116,27 @@ A paused subscription drops to Free entitlements — Stripe reports a paused
 subscription as `active`, so resolving on status alone would grant an indefinite
 free plan. Nothing is deleted, and everything returns on resume.
 
+## Exam integrity
+
+The exam surface is public — a student is identified by university ID plus an
+attempt access token, never by a logged-in session — so the server treats the
+browser as untrusted:
+
+- **Results are gated server-side.** When `show_results_immediately` is off, per
+  answer `is_correct` / `awarded_points` are stripped (`redactAnswerGrading`)
+  and the submit response withholds the score. The client's own check decides
+  what is *drawn*, not what is *sent*.
+- **The answer key never leaves the server.** `buildAttemptPresentation`
+  whitelists the fields a question is presented with, so `answer_text` and
+  `is_correct` cannot ride along on a question object.
+- **A missing device ID counts as a mismatch**, not as a skipped check. The
+  browser always sends one, so a request without it is not a browser behaving
+  normally — it is the device lock being opted out of.
+- **Proctoring events are whitelisted.** A client may report only what a browser
+  observes (`tab_hidden`, `window_blur`, …). `started`, `submitted`,
+  `timed_out`, and `duplicate_session_detected` are server-authored, and the
+  client payload is not stored verbatim.
+
 ## Important routes
 
 - `/api/attend`: server-validated attendance check-in (public, rate limited)

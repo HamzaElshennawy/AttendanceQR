@@ -9,6 +9,7 @@ import {
     shouldShowResults,
     validateAttemptMutation,
 } from "@/lib/exam-service";
+import { isClientReportableEvent, redactAnswerGrading } from "@/lib/exams";
 
 export async function GET(
     request: Request,
@@ -52,7 +53,11 @@ export async function GET(
         },
         config: exam.config,
         questions: presentation.questions,
-        answers: presentation.answers,
+        // Gated server-side. The client also checks `show_results`, but that
+        // decides what is drawn, not what is sent.
+        answers: showResults
+            ? presentation.answers
+            : redactAnswerGrading(presentation.answers),
         show_results: showResults,
     });
 }
@@ -76,17 +81,26 @@ export async function POST(
     }
 
     if (action === "event") {
-        if (body.event_type) {
+        const eventType = String(body.event_type || "");
+
+        // Unrecognised types are dropped rather than rejected: a client that is
+        // a version behind should not see errors for an event we no longer
+        // record, and a 400 here would tell a prober which names are accepted.
+        if (isClientReportableEvent(eventType)) {
             await logAttemptEvent({
                 attemptId: attempt.id,
-                eventType: String(body.event_type),
+                eventType,
+                // The client-supplied payload is not spread in. It was
+                // unbounded and unvalidated, so the proctoring log could be
+                // filled with arbitrary JSON by the student being proctored.
+                // Only the two fields the client legitimately reports are kept.
                 payload: {
-                    ...(body.payload || {}),
                     current_index: Number(body.current_index || attempt.current_index || 0),
-                    fingerprint: body.fingerprint || null,
+                    fingerprint: body.fingerprint ? String(body.fingerprint).slice(0, 128) : null,
                 },
             });
         }
+
         return NextResponse.json({ success: true });
     }
 
@@ -122,12 +136,20 @@ export async function POST(
 
     if (action === "submit") {
         const finalAttempt = await finalizeAttempt({ attempt, forcedStatus: "submitted" });
+
+        // Same gate as the GET. Without it, turning off "show results
+        // immediately" was pointless: the submit response handed back the score
+        // the instructor had chosen to withhold.
+        const exam = await getAssessmentWithExamConfig(assessmentId);
+        const showResults = shouldShowResults(finalAttempt, exam?.config ?? null);
+
         return NextResponse.json({
             success: true,
             status: finalAttempt.status,
-            score: finalAttempt.score,
-            auto_graded_score: finalAttempt.auto_graded_score,
+            score: showResults ? finalAttempt.score : null,
+            auto_graded_score: showResults ? finalAttempt.auto_graded_score : null,
             max_score: finalAttempt.max_score,
+            show_results: showResults,
         });
     }
 

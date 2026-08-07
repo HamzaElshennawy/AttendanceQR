@@ -60,6 +60,28 @@ function writeIDB(db: IDBDatabase, value: string): Promise<void> {
 // Persistent device ID (UUID stored in localStorage + IndexedDB)
 // ---------------------------------------------------------------------------
 
+function randomDeviceId(): string {
+    try {
+        if (typeof crypto?.randomUUID === "function") {
+            return crypto.randomUUID();
+        }
+    } catch {
+        // Fall through to the manual construction below.
+    }
+
+    try {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, (byte) =>
+            byte.toString(16).padStart(2, "0"),
+        ).join("");
+    } catch {
+        // Last resort. Not unguessable, but this only has to be distinct
+        // between two students sitting in the same room.
+        return `fallback-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+}
+
 async function getOrCreateDeviceId(): Promise<string> {
     // 1. Check localStorage first (fastest)
     let id: string | null = null;
@@ -83,9 +105,15 @@ async function getOrCreateDeviceId(): Promise<string> {
         }
     }
 
-    // 3. Generate new ID if neither had one
+    // 3. Generate new ID if neither had one.
+    //
+    // The server now rejects a check-in with no device id, so this must not be
+    // allowed to throw. crypto.randomUUID is unavailable in an insecure context
+    // and on older browsers, hence the fallback — a weaker id is still a
+    // device-scoped one, and infinitely better than blocking a real student at
+    // the classroom door.
     if (!id) {
-        id = crypto.randomUUID();
+        id = randomDeviceId();
     }
 
     // 4. Persist to both stores
