@@ -55,7 +55,6 @@ npm run dev
 | Sessions/month | 10 | 200 | Unlimited |
 | Team members | 0 | 5 | Unlimited |
 | Spreadsheet import | ❌ | ✅ | ✅ |
-| Reporting and exports | ❌ | ✅ | ✅ |
 | Team roles | ❌ | ✅ | ✅ |
 | Exams | ❌ | ❌ | ✅ |
 
@@ -66,6 +65,14 @@ whoever performs the action, so a TA's activity counts against the owner's plan.
 Plans are defined in `src/lib/plans.ts`. `resolveEffectivePlan()` is the single
 place that decides what a subscriber is entitled to right now, accounting for
 lapsed status, the dunning grace window, and pauses.
+
+**Every feature in `EntitlementFeature` must be enforced on the server.** A flag
+that gates nothing is a promise the product does not keep: `rich_reporting` was
+advertised on the pricing page while gating nothing anywhere, and
+`advanced_exports` was checked only in the browser, over a workbook built
+client-side from rows the user had already loaded. Both were removed rather than
+wired up — coursework exports are now available on every plan. Add a flag when
+there is a server boundary to enforce it at, not before.
 
 ## Free trial
 

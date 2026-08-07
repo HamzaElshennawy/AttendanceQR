@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
     PLAN_DEFINITIONS,
+    PLAN_ORDER,
     TRIAL_PERIOD_DAYS,
     annualSavingMonths,
     canStartTrial,
@@ -48,6 +49,27 @@ test("plan matrix gates features at the right tiers", () => {
     // Coursework is the core loop and stays available on every plan.
     for (const tier of ["free", "plus", "pro"] as const) {
         assert.equal(planIncludesFeature(tier, "coursework"), true);
+    }
+});
+
+test("every gated feature is one the server actually enforces", () => {
+    // A tripwire, not a formality. `rich_reporting` sat in this matrix and on
+    // the public pricing page while gating nothing anywhere in the codebase,
+    // and `advanced_exports` was checked only in the browser. Both were sold.
+    //
+    // Adding a key here should fail this test until someone has decided where
+    // requireFeature() is called for it. Each of these is enforced in an API
+    // route: coursework everywhere, spreadsheet_import in the student and
+    // attendance import routes, team_members in the members route, exams in the
+    // exam setup, questions, and delivery routes.
+    const enforced = ["coursework", "spreadsheet_import", "team_members", "exams"];
+
+    for (const tier of PLAN_ORDER) {
+        assert.deepEqual(
+            Object.keys(PLAN_DEFINITIONS[tier].features).sort(),
+            [...enforced].sort(),
+            `${tier} declares a feature with no server-side gate`,
+        );
     }
 });
 

@@ -19,8 +19,6 @@ import {
 const FEATURE_LABELS: { key: EntitlementFeature; label: string }[] = [
     { key: "coursework", label: "Coursework and grading" },
     { key: "spreadsheet_import", label: "Spreadsheet import" },
-    { key: "rich_reporting", label: "Rich reporting" },
-    { key: "advanced_exports", label: "Advanced exports" },
     { key: "team_members", label: "Team roles (TAs)" },
     { key: "exams", label: "Online exams" },
 ];

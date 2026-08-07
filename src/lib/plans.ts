@@ -20,12 +20,20 @@ export type SubscriptionStatus =
     | "incomplete"
     | "incomplete_expired";
 
+/**
+ * Features a plan can gate.
+ *
+ * Every entry here must be enforced somewhere. `rich_reporting` and
+ * `advanced_exports` were removed rather than wired up: the first gated nothing
+ * anywhere in the codebase while being advertised on the pricing page, and the
+ * second was checked only in the browser, over a workbook built client-side
+ * from rows the user had already loaded — so it was a dialog, not a boundary.
+ * Selling either was a promise the system did not keep.
+ */
 export type EntitlementFeature =
     | "coursework"
     | "spreadsheet_import"
     | "team_members"
-    | "rich_reporting"
-    | "advanced_exports"
     | "exams";
 
 export interface PlanPricing {
@@ -61,8 +69,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
             coursework: true,
             spreadsheet_import: false,
             team_members: false,
-            rich_reporting: false,
-            advanced_exports: false,
             exams: false,
         },
         quotas: {
@@ -80,8 +86,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
             coursework: true,
             spreadsheet_import: true,
             team_members: true,
-            rich_reporting: true,
-            advanced_exports: true,
             exams: false,
         },
         quotas: {
@@ -99,8 +103,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
             coursework: true,
             spreadsheet_import: true,
             team_members: true,
-            rich_reporting: true,
-            advanced_exports: true,
             exams: true,
         },
         // Infinity rather than a 999999 sentinel, so "unlimited" is literally

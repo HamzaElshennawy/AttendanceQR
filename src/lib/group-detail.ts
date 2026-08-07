@@ -32,7 +32,6 @@ export interface TeamMember {
 export interface GroupBillingSummary {
     features: {
         team_members: boolean;
-        advanced_exports: boolean;
     };
     plan: {
         label: string;
