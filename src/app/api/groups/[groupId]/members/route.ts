@@ -50,9 +50,11 @@ export async function POST(
 
     const { data: professor } = await supabaseAdmin
         .from("professors")
+        // maybeSingle: "no account with that email" is an ordinary outcome
+        // here, answered with the 404 below, not a query error.
         .select("id, email, name")
         .eq("email", normalizedEmail)
-        .single();
+        .maybeSingle();
 
     if (!professor) {
         return NextResponse.json(

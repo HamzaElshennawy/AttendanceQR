@@ -130,25 +130,44 @@ export function BillingPanel() {
         let cancelled = false;
 
         (async () => {
-            const response = await fetch("/api/billing/summary");
-            const payload = await response.json();
+            try {
+                const response = await fetch("/api/billing/summary");
 
-            if (cancelled) {
-                return;
+                // Parsed defensively and after the status check. A 500 with an
+                // empty body used to throw here, and because setLoading(false)
+                // came after, the panel span forever instead of showing the
+                // error it already knew how to render.
+                const payload = await response
+                    .json()
+                    .catch(() => null as BillingSummary | null);
+
+                if (cancelled) {
+                    return;
+                }
+
+                if (response.ok && payload) {
+                    setSummary(payload as BillingSummary);
+                    setInterval(
+                        (payload as BillingSummary).subscription
+                            .billing_interval || "month",
+                    );
+                } else {
+                    setSummary(null);
+                    setError(
+                        (payload as { error?: string } | null)?.error ||
+                            "Could not load billing information.",
+                    );
+                }
+            } catch {
+                if (!cancelled) {
+                    setSummary(null);
+                    setError("Could not reach the billing service.");
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
-
-            if (response.ok) {
-                setSummary(payload as BillingSummary);
-                setInterval(
-                    (payload as BillingSummary).subscription.billing_interval ||
-                        "month",
-                );
-            } else {
-                setSummary(null);
-                setError(payload.error || "Could not load billing information.");
-            }
-
-            setLoading(false);
         })();
 
         return () => {
@@ -166,9 +185,19 @@ export function BillingPanel() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ plan, interval }),
-        });
-        const payload = await response.json();
+        }).catch(() => null);
+
+        // Same defensive parse as the summary fetch: an unparseable body must
+        // not leave the button spinning with no explanation.
+        const payload = response
+            ? await response.json().catch(() => ({}))
+            : {};
         setActionLoading("");
+
+        if (!response) {
+            setError("Could not reach the billing service.");
+            return;
+        }
 
         if (payload.code === "SUBSCRIPTION_EXISTS") {
             // Changing an existing subscription belongs in the portal, which
@@ -189,9 +218,19 @@ export function BillingPanel() {
         setActionLoading("portal");
         setError("");
 
-        const response = await fetch("/api/billing/portal", { method: "POST" });
-        const payload = await response.json();
+        const response = await fetch("/api/billing/portal", {
+            method: "POST",
+        }).catch(() => null);
+
+        const payload = response
+            ? await response.json().catch(() => ({}))
+            : {};
         setActionLoading("");
+
+        if (!response) {
+            setError("Could not reach the billing service.");
+            return;
+        }
 
         if (!response.ok || !payload.url) {
             setError(payload.error || "Failed to open the billing portal.");

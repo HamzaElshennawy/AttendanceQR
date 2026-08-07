@@ -51,9 +51,16 @@ export default function DashboardLayout({
                     await Promise.all([
                         supabase
                             .from("professors")
+                            // maybeSingle, not single: PostgREST answers 406 to
+                            // a single() that matches no rows, so an account
+                            // without a profile row logged a console error on
+                            // every dashboard render. A missing profile is a
+                            // real state — accounts created before the
+                            // handle_new_user trigger have none — and the
+                            // header already falls back to "Professor".
                             .select("name")
                             .eq("id", user.id)
-                            .single(),
+                            .maybeSingle(),
                         supabase
                             .from("system_admins")
                             .select("user_id")

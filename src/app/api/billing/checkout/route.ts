@@ -151,7 +151,28 @@ export async function POST(request: Request) {
                   }
                 : {}),
         },
-    });
+    })
+        // A price id that does not exist in this Stripe account is the common
+        // failure — the env vars name four prices and any typo lands here.
+        // Uncaught, it became a bare 500 with no body, so the upgrade button
+        // just stopped without saying anything.
+        .catch((error: unknown) => {
+            logger.error("Failed to create Stripe checkout session", {
+                userId: user.id,
+                plan: targetPlan,
+                interval,
+                error,
+            });
+
+            return null;
+        });
+
+    if (!checkoutSession) {
+        return NextResponse.json(
+            { error: "Could not start checkout. Please try again." },
+            { status: 500 },
+        );
+    }
 
     return NextResponse.json({
         url: checkoutSession.url,

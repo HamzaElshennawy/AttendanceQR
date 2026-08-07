@@ -151,6 +151,29 @@ browser as untrusted:
 - `/api/billing/*`: summary, checkout, portal, retention, and the Stripe webhook
 - `/api/exams/*`: public exam delivery, gated by attempt access token
 
+## Database migrations
+
+Apply everything in `supabase/migrations/` **before** deploying the code that
+reads it. Each file is additive and re-runnable, so re-applying is safe.
+
+The failure mode when you skip one is not obvious: `getOrCreateSubscriptionRecord`
+upserts a full row on first use, so a column the code writes but the database
+lacks turns `/api/billing/summary` into a 500 and every Stripe webhook into a
+retry loop. Two of these matter in order:
+
+| Migration | Why it must run first |
+|---|---|
+| `20260807000000_free_trial` | Adds `trial_started_at`, `trial_ends_at`, `has_used_trial`, which the checkout route and webhook both write |
+| `20260807000100_backfill_missing_profile_rows` | Creates `professors` / `professor_subscriptions` rows for accounts registered before the `handle_new_user` trigger shipped — without it those users get a 406 on the dashboard and a 500 from billing |
+
+Applying them with the Supabase CLI:
+
+```bash
+supabase db push
+```
+
+Or paste a file into the SQL editor for a project not managed by the CLI.
+
 ## Quality checks
 
 ```bash
